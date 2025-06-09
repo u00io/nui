@@ -25,6 +25,12 @@ type nativeWindow struct {
 	windowWidth  int
 	windowHeight int
 
+	lastMouseDownX    int
+	lastMouseDownY    int
+	lastMouseButton   nuimouse.MouseButton
+	lastMouseDownTime time.Time
+	dblClickTime      time.Duration
+
 	drawTimes      [32]int64
 	drawTimesIndex int
 

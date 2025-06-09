@@ -24,6 +24,7 @@ type nativeWindowPlatform struct {
 
 func createWindow(title string, width int, height int, center bool) *nativeWindow {
 	var c nativeWindow
+	c.dblClickTime = 300 * time.Millisecond
 
 	// Create a unique class name
 	dt := time.Now().Format("2006-01-02-15-04-05")
@@ -45,7 +46,7 @@ func createWindow(title string, width int, height int, center bool) *nativeWindo
 	// Register the window class
 	wndClass := t_WNDCLASSEXW{
 		cbSize:        uint32(unsafe.Sizeof(t_WNDCLASSEXW{})),
-		style:         c_CS_OWNDC | c_CS_DBLCLKS,
+		style:         c_CS_OWNDC, /*| c_CS_DBLCLKS*/
 		lpfnWndProc:   syscall.NewCallback(wndProc),
 		hInstance:     syscall.Handle(hInstance),
 		hCursor:       0,
