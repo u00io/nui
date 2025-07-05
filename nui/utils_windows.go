@@ -475,6 +475,13 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			k = nuikey.KeyWin
 		}
 
+		if k != nuikey.KeyShift &&
+			k != nuikey.KeyCtrl &&
+			k != nuikey.KeyAlt &&
+			k != nuikey.KeyF10 {
+			break
+		}
+
 		if k == nuikey.KeyShift {
 			if win.keyModifiers.Shift {
 				needGenEvent = false
@@ -539,9 +546,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		}
 		return 0
 
-	case c_WM_SYSCHAR:
-		println("SysChar typed:", rune(wParam), "=", string(rune(wParam)))
-		return 0
+	/*case c_WM_SYSCHAR:
+	println("SysChar typed:", rune(wParam), "=", string(rune(wParam)))
+	return 0*/
 
 	case c_WM_CHAR:
 		println("Char typed:", rune(wParam), "=", string(rune(wParam)))
@@ -745,10 +752,10 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		}
 		return 0
 
-	default:
-		ret, _, _ := procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
-		return ret
 	}
+
+	ret, _, _ := procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
+	return ret
 }
 
 func (c *nativeWindow) changeMouseCursor(cursor nuimouse.MouseCursor) bool {
