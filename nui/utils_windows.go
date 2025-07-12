@@ -2,7 +2,6 @@ package nui
 
 import (
 	"bytes"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -786,7 +785,7 @@ func (c *nativeWindow) changeMouseCursor(cursor nuimouse.MouseCursor) bool {
 	}
 
 	c.lastSetCursor = cursor
-	fmt.Println("Setting cursor to:", cursor)
+	//fmt.Println("Setting cursor to:", cursor)
 
 	ret, _, _ := procSetCursor.Call(hCursor)
 	return ret != 0

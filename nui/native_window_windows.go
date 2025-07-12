@@ -1,7 +1,6 @@
 package nui
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"math/rand"
@@ -119,11 +118,11 @@ func (c *nativeWindow) EventLoop() {
 		ret, _, err := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
 		e := err.(syscall.Errno)
 		if e != 0 {
-			fmt.Println("Error:", e)
+			//fmt.Println("Error:", e)
 		}
 
 		if ret == 0 {
-			fmt.Println("Exiting...")
+			//fmt.Println("Exiting...")
 			break
 		}
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
@@ -149,7 +148,7 @@ func (c *nativeWindow) SetTitle(title string) {
 func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 	hIcon := createHICONFromRGBA(icon)
 	if hIcon == 0 {
-		fmt.Println("failed to create icon")
+		//fmt.Println("failed to create icon")
 		return
 	}
 
