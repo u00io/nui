@@ -417,10 +417,24 @@ int GetWindowWidth(int windowId) {
     return (int)win.frame.size.width;
 }
 
+int GetClientAreaWidth(int windowId) {
+    NSWindow *win = windowMap[@(windowId)];
+    if (!win) return -1;
+    NSRect contentRect = [win contentLayoutRect];
+    return (int)contentRect.size.width;
+}
+
 int GetWindowHeight(int windowId) {
     NSWindow *win = windowMap[@(windowId)];
     if (!win) return -1;
     return (int)win.frame.size.height;
+}
+
+int GetClientAreaHeight(int windowId) {
+    NSWindow *win = windowMap[@(windowId)];
+    if (!win) return -1;
+    NSRect contentRect = [win contentLayoutRect];
+    return (int)contentRect.size.height;
 }
 
 void timerCallback(NSTimer *timer) {

@@ -112,6 +112,7 @@ func go_on_mouse_up(hwnd C.int, button, x, y C.int) {
 
 //export go_on_mouse_move
 func go_on_mouse_move(hwnd C.int, x, y C.int) {
+	//fmt.Println("mouse move", int(x), int(y))
 	if win, ok := hwnds[windowId(hwnd)]; ok {
 		win.windowMouseMove(int(x), int(y))
 		win.macSetMouseCursor(win.currentCursor)
@@ -315,7 +316,8 @@ func (c *nativeWindow) stopTimer() {
 
 func (c *nativeWindow) windowMouseMove(x, y int) {
 	if c.onMouseMove != nil {
-		y = c.windowHeight - y
+		_, areaH := c.requestClientAreaSize()
+		y = areaH - y
 		c.onMouseMove(x, y)
 	}
 	c.Update()
@@ -477,7 +479,8 @@ func (c *nativeWindow) windowChar(char rune) {
 
 func (c *nativeWindow) windowMouseButtonDown(button nuimouse.MouseButton, x, y int) {
 	if c.onMouseButtonDown != nil {
-		y = c.windowHeight - y
+		_, areaH := c.requestClientAreaSize()
+		y = areaH - y
 		c.onMouseButtonDown(button, x, y)
 	}
 	c.macSetMouseCursor(c.currentCursor)
@@ -485,7 +488,8 @@ func (c *nativeWindow) windowMouseButtonDown(button nuimouse.MouseButton, x, y i
 
 func (c *nativeWindow) windowMouseButtonUp(button nuimouse.MouseButton, x, y int) {
 	if c.onMouseButtonUp != nil {
-		y = c.windowHeight - y
+		_, areaH := c.requestClientAreaSize()
+		y = areaH - y
 		c.onMouseButtonUp(button, x, y)
 	}
 	c.macSetMouseCursor(c.currentCursor)
@@ -493,7 +497,8 @@ func (c *nativeWindow) windowMouseButtonUp(button nuimouse.MouseButton, x, y int
 
 func (c *nativeWindow) windowMouseButtonDblClick(button nuimouse.MouseButton, x, y int) {
 	if c.onMouseButtonDblClick != nil {
-		y = c.windowHeight - y
+		_, areaH := c.requestClientAreaSize()
+		y = areaH - y
 		c.onMouseButtonDblClick(button, x, y)
 	}
 	c.macSetMouseCursor(c.currentCursor)
@@ -516,5 +521,11 @@ func (c *nativeWindow) requestWindowPosition() (int, int) {
 func (c *nativeWindow) requestWindowSize() (int, int) {
 	w := int(C.GetWindowWidth(C.int(c.hwnd)))
 	h := int(C.GetWindowHeight(C.int(c.hwnd)))
+	return w, h
+}
+
+func (c *nativeWindow) requestClientAreaSize() (int, int) {
+	w := int(C.GetClientAreaWidth(C.int(c.hwnd)))
+	h := int(C.GetClientAreaHeight(C.int(c.hwnd)))
 	return w, h
 }

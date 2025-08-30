@@ -24,6 +24,9 @@ int GetWindowPositionY(int windowId);
 int GetWindowWidth(int windowId);
 int GetWindowHeight(int windowId);
 
+int GetClientAreaWidth(int windowId);
+int GetClientAreaHeight(int windowId);
+
 int GetScreenWidth();
 int GetScreenHeight();
 
