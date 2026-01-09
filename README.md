@@ -1,19 +1,21 @@
-# nui
+# nui - Native UI Library
 
-Bad:
-SetDIBitsToDevice params:
-hdc: 570494350
-imageWidthAsUintPtr: 800
-imageHeightAsUintPtr: 600
-pixels: 1920000
-bi: {{40 800 -600 1 32 0 0 0 0 0 0} [{0 0 0 0}]}
+Native gateway between OS UI & Golang with minimum dependencies.
 
+- Windows management
+- Keyboard input
+- Mouse input
 
-Good:
+# Operating Systems
+- Linux
+- Windows
+- MacOS
 
-hdc: 18446744072400996498
-imageWidthAsUintPtr: 800
-imageHeightAsUintPtr: 600
-pixels: 1920000
-bi: {{40 800 -600 1 32 0 0 0 0 0 0} [{0 0 0 0}]}
+# Linux build
+- export CGO_ENABLED=1
+- sudo apt install gcc
+- sudo apt install -y libx11-dev
+- go build -o bin/nui ./main.go
 
+# Windows build
+- go build -o bin/nui.exe -ldflags="-H=windowsgui"
