@@ -378,7 +378,7 @@ func (c *nativeWindow) EventLoop() {
 
 			case C.ButtonPress:
 				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Mouse button %d pressed at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
+				//fmt.Printf("Mouse button %d pressed at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
 
 				x := int(buttonEvent.x)
 				y := int(buttonEvent.y)
@@ -414,6 +414,7 @@ func (c *nativeWindow) EventLoop() {
 					}
 				}
 
+				dblClickDetected := false
 				// Double click detection
 				if buttonEvent.button == 1 || buttonEvent.button == 2 || buttonEvent.button == 3 {
 					if c.lastMouseButton == nuimouse.MouseButton(buttonEvent.button) {
@@ -436,19 +437,28 @@ func (c *nativeWindow) EventLoop() {
 								c.onMouseButtonDblClick(btn, x, y)
 							}
 							fmt.Println("dbl click detected")
+							dblClickDetected = true
 						}
 					}
 				}
 
-				// Update last mouse down info
-				c.lastMouseDownX = int(buttonEvent.x)
-				c.lastMouseDownY = int(buttonEvent.y)
-				c.lastMouseButton = nuimouse.MouseButton(buttonEvent.button)
-				c.lastMouseDownTime = time.Now()
+				if !dblClickDetected {
+					// Update last mouse down info
+					c.lastMouseDownX = int(buttonEvent.x)
+					c.lastMouseDownY = int(buttonEvent.y)
+					c.lastMouseButton = nuimouse.MouseButton(buttonEvent.button)
+					c.lastMouseDownTime = time.Now()
+				} else {
+					// Reset last mouse down info to avoid triple click detection
+					c.lastMouseDownX = 0
+					c.lastMouseDownY = 0
+					c.lastMouseButton = nuimouse.MouseButton(0)
+					c.lastMouseDownTime = time.Time{}
+				}
 
 			case C.ButtonRelease:
 				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Mouse button %d released at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
+				//fmt.Printf("Mouse button %d released at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
 
 				x := int(buttonEvent.x)
 				y := int(buttonEvent.y)
