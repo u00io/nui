@@ -41,6 +41,11 @@ type nativeWindowPlatform struct {
 	window  C.Window
 	screen  C.int
 
+	lastMouseDownX      int
+	lastMouseDownY      int
+	lastMouseDownButton nuimouse.MouseButton
+	lastMouseDownTime   time.Time
+
 	dtLastUpdateCalled time.Time
 	needUpdateInTimer  bool
 }
@@ -408,6 +413,38 @@ func (c *nativeWindow) EventLoop() {
 						c.onMouseWheel(0, -1)
 					}
 				}
+
+				// Double click detection
+				if buttonEvent.button == 1 || buttonEvent.button == 2 || buttonEvent.button == 3 {
+					if c.lastMouseButton == nuimouse.MouseButton(buttonEvent.button) {
+						timeSinceLastClick := time.Since(c.lastMouseDownTime)
+						distanceX := int(buttonEvent.x) - c.lastMouseDownX
+						distanceY := int(buttonEvent.y) - c.lastMouseDownY
+						distanceSquared := distanceX*distanceX + distanceY*distanceY
+						if timeSinceLastClick < 500*time.Millisecond && distanceSquared < 25 {
+							// Detected double click
+							if c.onMouseButtonDblClick != nil {
+								var btn nuimouse.MouseButton
+								switch buttonEvent.button {
+								case 1:
+									btn = nuimouse.MouseButtonLeft
+								case 2:
+									btn = nuimouse.MouseButtonMiddle
+								case 3:
+									btn = nuimouse.MouseButtonRight
+								}
+								c.onMouseButtonDblClick(btn, x, y)
+							}
+							fmt.Println("dbl click detected")
+						}
+					}
+				}
+
+				// Update last mouse down info
+				c.lastMouseDownX = int(buttonEvent.x)
+				c.lastMouseDownY = int(buttonEvent.y)
+				c.lastMouseButton = nuimouse.MouseButton(buttonEvent.button)
+				c.lastMouseDownTime = time.Now()
 
 			case C.ButtonRelease:
 				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
