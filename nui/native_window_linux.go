@@ -279,7 +279,7 @@ func (c *nativeWindow) EventLoop() {
 						c.drawImageRGBA(c.platform.display, c.platform.window, img)
 						paintTime := time.Since(dtLastPaint)
 						_ = paintTime
-						fmt.Println("PaintTime:", paintTime.Microseconds())
+						//fmt.Println("PaintTime:", paintTime.Microseconds())
 
 						c.drawTimes[c.drawTimesIndex] = time.Since(dtBeginPaint).Microseconds()
 						c.drawTimesIndex++
