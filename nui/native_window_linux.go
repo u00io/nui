@@ -11,6 +11,7 @@ import (
 	"image/color"
 	"image/png"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/u00io/nui/nuikey"
@@ -25,10 +26,12 @@ import (
 #include <stdlib.h>
 #include <string.h>
 #include "ximage_helper.h"
+#include <locale.h>
 */
 import "C"
 
 func init() {
+	C.setlocale(C.LC_ALL, C.CString(""))
 }
 
 type windowId C.Window
@@ -41,50 +44,6 @@ type nativeWindowPlatform struct {
 	dtLastUpdateCalled time.Time
 	needUpdateInTimer  bool
 }
-
-/*type NativeWindow struct {
-	display *C.Display
-	window  C.Window
-	screen  C.int
-
-	currentCursor MouseCursor
-	lastSetCursor MouseCursor
-
-	keyModifiers KeyModifiers
-
-	dtLastUpdateCalled time.Time
-	needUpdateInTimer  bool
-
-	windowPosX   int
-	windowPosY   int
-	windowWidth  int
-	windowHeight int
-
-	drawTimes      [32]int64
-	drawTimesIndex int
-
-	// Keyboard events
-	OnKeyDown func(keyCode Key, mods KeyModifiers)
-	OnKeyUp   func(keyCode Key, mods KeyModifiers)
-	OnChar    func(char rune)
-
-	// Mouse events
-	OnMouseEnter          func()
-	OnMouseLeave          func()
-	OnMouseMove           func(x, y int)
-	OnMouseButtonDown     func(button MouseButton, x, y int)
-	OnMouseButtonUp       func(button MouseButton, x, y int)
-	OnMouseButtonDblClick func(button MouseButton, x, y int)
-	OnMouseWheel          func(deltaX int, deltaY int)
-
-	// Window events
-	OnCreated      func()
-	OnPaint        func(rgba *image.RGBA)
-	OnMove         func(x, y int)
-	OnResize       func(width, height int)
-	OnCloseRequest func() bool
-	OnTimer        func()
-}*/
 
 var mouseInside bool = false
 
@@ -351,6 +310,31 @@ func (c *nativeWindow) EventLoop() {
 				}
 				if key == nuikey.KeyAlt {
 					c.keyModifiers.Alt = true
+				}
+
+				var buf [32]C.char
+				var sym C.KeySym
+
+				xkey := (*C.XKeyEvent)(unsafe.Pointer(&event))
+
+				n := C.XLookupString(
+					xkey,
+					&buf[0],
+					C.int(len(buf)),
+					&sym,
+					nil,
+				)
+
+				if n > 0 {
+					text := C.GoStringN(&buf[0], n)
+					fmt.Printf("Text input: %s\n", text)
+
+					firstRune, _ := utf8.DecodeRuneInString(text)
+					if firstRune > 0 {
+						if c.onChar != nil {
+							c.onChar(firstRune)
+						}
+					}
 				}
 
 			case C.KeyRelease:
