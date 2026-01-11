@@ -398,19 +398,19 @@ func (c *nativeWindow) EventLoop() {
 					}
 				case 4:
 					if c.onMouseWheel != nil {
-						c.onMouseWheel(1, 0)
+						c.onMouseWheel(0, 1)
 					}
 				case 5:
 					if c.onMouseWheel != nil {
-						c.onMouseWheel(-1, 0)
+						c.onMouseWheel(0, -1)
 					}
 				case 6:
 					if c.onMouseWheel != nil {
-						c.onMouseWheel(0, 1)
+						c.onMouseWheel(1, 0)
 					}
 				case 7:
 					if c.onMouseWheel != nil {
-						c.onMouseWheel(0, -1)
+						c.onMouseWheel(-1, 0)
 					}
 				}
 
