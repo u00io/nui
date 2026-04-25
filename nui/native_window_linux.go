@@ -335,7 +335,7 @@ func (c *nativeWindow) EventLoop() {
 					fmt.Printf("Text input: %s\n", text)
 
 					firstRune, _ := utf8.DecodeRuneInString(text)
-					if firstRune > 0 {
+					if firstRune > 0 && firstRune != 127 {
 						if c.onChar != nil {
 							c.onChar(firstRune)
 						}
@@ -601,7 +601,7 @@ func (c *nativeWindow) changeMouseCursor(mouseCursor nuimouse.MouseCursor) bool 
 		CursorCross = 34
 		CursorWait  = 150
 		CursorIBeam = 152
-		CursorHand  = 58
+		CursorHand  = 60
 		CursorBlank = 0
 
 		CursorResizeVertical   = 116 // XC_sb_v_double_arrow
