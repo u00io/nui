@@ -16,7 +16,7 @@ func Run() {
 
 	buttonPressed := false
 
-	wnd := nui.CreateWindow("App", 800, 600, true)
+	wnd := nui.CreateWindow("App", 800, 600, true, true)
 
 	wnd.OnPaint(func(rgba *image.RGBA) {
 		rect := rgba.Rect

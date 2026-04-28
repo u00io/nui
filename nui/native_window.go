@@ -16,6 +16,8 @@ type nativeWindow struct {
 	currentCursor nuimouse.MouseCursor
 	lastSetCursor nuimouse.MouseCursor
 
+	showMaximized bool
+
 	mouseInside bool
 
 	keyModifiers nuikey.KeyModifiers

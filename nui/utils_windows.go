@@ -66,15 +66,16 @@ var (
 
 const (
 	c_WS_OVERLAPPEDWINDOW = 0x00CF0000
+	c_WS_MAXIMIZE         = 0x01000000
 	c_WS_VISIBLE          = 0x10000000
 	c_CW_USEDEFAULT       = 0x80000000
-	c_SW_SHOWDEFAULT      = 10
 
 	c_SW_HIDE          = 0
 	c_SW_SHOWNORMAL    = 1
 	c_SW_SHOWMINIMIZED = 2
 	c_SW_SHOWMAXIMIZED = 3
 	c_SW_RESTORE       = 9
+	c_SW_SHOWDEFAULT   = 10
 
 	c_SM_CXSCREEN = 0
 	c_SM_CYSCREEN = 1
@@ -717,16 +718,20 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		if win != nil && win.onResize != nil {
 			win.onResize(int(width), int(height))
 		}
-		win.windowWidth = int(width)
-		win.windowHeight = int(height)
+		if win != nil {
+			win.windowWidth = int(width)
+			win.windowHeight = int(height)
+		}
 		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 		return 0
 
 	case c_WM_MOVE:
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
-		win.windowPosX = int(x)
-		win.windowPosY = int(y)
+		if win != nil {
+			win.windowPosX = int(x)
+			win.windowPosY = int(y)
+		}
 		if win != nil && win.onMove != nil {
 			win.onMove(int(x), int(y))
 		}

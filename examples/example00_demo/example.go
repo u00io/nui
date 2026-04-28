@@ -28,7 +28,7 @@ func log(s string) {
 }
 
 func Run() {
-	win := nui.CreateWindow("App", 800, 600, true)
+	win := nui.CreateWindow("App", 800, 600, true, false)
 
 	var timerCounter = 0
 	var mousePosX, mousePosY = 0, 0
@@ -215,7 +215,6 @@ func Run() {
 	})
 
 	win.Show()
-	win.MoveToCenterOfScreen()
 
 	winPosX = win.PosX()
 	winPosY = win.PosY()

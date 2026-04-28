@@ -21,9 +21,10 @@ type nativeWindowPlatform struct {
 // ///////////////////////////////////////////////////
 // Window creation and management
 
-func createWindow(title string, width int, height int, center bool) *nativeWindow {
+func createWindow(title string, width int, height int, center bool, maximized bool) *nativeWindow {
 	var c nativeWindow
 	c.dblClickTime = 300 * time.Millisecond
+	c.showMaximized = maximized
 
 	// Create a unique class name
 	dt := time.Now().Format("2006-01-02-15-04-05")
@@ -54,12 +55,17 @@ func createWindow(title string, width int, height int, center bool) *nativeWindo
 	}
 	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass)))
 
+	windowFlags := uint32(c_WS_OVERLAPPEDWINDOW)
+	if c.showMaximized {
+		windowFlags |= c_WS_MAXIMIZE
+	}
+
 	// Create the window
 	hwnd, _, _ := procCreateWindowExW.Call(
 		0,
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(windowTitle)),
-		c_WS_OVERLAPPEDWINDOW,
+		uintptr(windowFlags),
 		c_CW_USEDEFAULT,
 		c_CW_USEDEFAULT,
 		uintptr(width),
@@ -81,7 +87,7 @@ func createWindow(title string, width int, height int, center bool) *nativeWindo
 	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
 	c.SetAppIcon(icon)
 
-	if center {
+	if center && !maximized {
 		c.MoveToCenterOfScreen()
 	}
 
@@ -91,8 +97,11 @@ func createWindow(title string, width int, height int, center bool) *nativeWindo
 }
 
 func (c *nativeWindow) Show() {
-	// Show the window
-	procShowWindow.Call(uintptr(c.hwnd), c_SW_SHOWDEFAULT)
+	if c.showMaximized {
+		procShowWindow.Call(uintptr(c.hwnd), c_SW_SHOWMAXIMIZED)
+	} else {
+		procShowWindow.Call(uintptr(c.hwnd), c_SW_SHOWDEFAULT)
+	}
 	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
 	procUpdateWindow.Call(uintptr(c.hwnd))
 }
