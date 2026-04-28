@@ -477,12 +477,18 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			k = nuikey.KeyWin
 		}
 
-		if k != nuikey.KeyShift &&
+		/*fmt.Println("SYSKEY_DOWN", k.String())
+
+		if k == nuikey.KeyEnter {
+			fmt.Println("Enter key pressed with Alt")
+		}*/
+
+		/*if k != nuikey.KeyShift &&
 			k != nuikey.KeyCtrl &&
 			k != nuikey.KeyAlt &&
 			k != nuikey.KeyF10 {
 			break
-		}
+		}*/
 
 		if k == nuikey.KeyShift {
 			if win.keyModifiers.Shift {
