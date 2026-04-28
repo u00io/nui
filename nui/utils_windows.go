@@ -553,7 +553,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	return 0*/
 
 	case c_WM_CHAR:
-		println("Char typed:", rune(wParam), "=", string(rune(wParam)))
+		//println("Char typed:", rune(wParam), "=", string(rune(wParam)))
 
 		if win != nil && win.onChar != nil && wParam >= 32 {
 			win.onChar(rune(wParam))
@@ -593,18 +593,24 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
 			win.onMouseButtonDown(nuimouse.MouseButtonLeft, int(x), int(y))
+			doubleClickDetected := false
 			if win.lastMouseButton == nuimouse.MouseButtonLeft {
 				if time.Since(win.lastMouseDownTime) < win.dblClickTime &&
 					math.Abs(float64(win.lastMouseDownX-int(x))) < 3 && math.Abs(float64(win.lastMouseDownY-int(y))) < 3 {
 					if win.onMouseButtonDblClick != nil {
 						win.onMouseButtonDblClick(nuimouse.MouseButtonLeft, int(x), int(y))
 					}
+					doubleClickDetected = true
 				}
 			}
 			win.lastMouseDownX = int(x)
 			win.lastMouseDownY = int(y)
 			win.lastMouseButton = nuimouse.MouseButtonLeft
-			win.lastMouseDownTime = time.Now()
+			if doubleClickDetected {
+				win.lastMouseDownTime = time.Now().Add(-win.dblClickTime * 2)
+			} else {
+				win.lastMouseDownTime = time.Now()
+			}
 		}
 		return 0
 
@@ -622,18 +628,24 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
 			win.onMouseButtonDown(nuimouse.MouseButtonRight, int(x), int(y))
+			doubleClickDetected := false
 			if win.lastMouseButton == nuimouse.MouseButtonRight {
 				if time.Since(win.lastMouseDownTime) < win.dblClickTime &&
 					math.Abs(float64(win.lastMouseDownX-int(x))) < 3 && math.Abs(float64(win.lastMouseDownY-int(y))) < 3 {
 					if win.onMouseButtonDblClick != nil {
 						win.onMouseButtonDblClick(nuimouse.MouseButtonRight, int(x), int(y))
 					}
+					doubleClickDetected = true
 				}
 			}
 			win.lastMouseDownX = int(x)
 			win.lastMouseDownY = int(y)
 			win.lastMouseButton = nuimouse.MouseButtonRight
-			win.lastMouseDownTime = time.Now()
+			if doubleClickDetected {
+				win.lastMouseDownTime = time.Now().Add(-win.dblClickTime * 2)
+			} else {
+				win.lastMouseDownTime = time.Now()
+			}
 		}
 		return 0
 
@@ -651,18 +663,24 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			y := int16((lParam >> 16) & 0xFFFF)
 
 			win.onMouseButtonDown(nuimouse.MouseButtonMiddle, int(x), int(y))
+			doubleClickDetected := false
 			if win.lastMouseButton == nuimouse.MouseButtonMiddle {
 				if time.Since(win.lastMouseDownTime) < win.dblClickTime &&
 					math.Abs(float64(win.lastMouseDownX-int(x))) < 3 && math.Abs(float64(win.lastMouseDownY-int(y))) < 3 {
 					if win.onMouseButtonDblClick != nil {
 						win.onMouseButtonDblClick(nuimouse.MouseButtonMiddle, int(x), int(y))
 					}
+					doubleClickDetected = true
 				}
 			}
 			win.lastMouseDownX = int(x)
 			win.lastMouseDownY = int(y)
 			win.lastMouseButton = nuimouse.MouseButtonMiddle
-			win.lastMouseDownTime = time.Now()
+			if doubleClickDetected {
+				win.lastMouseDownTime = time.Now().Add(-win.dblClickTime * 2)
+			} else {
+				win.lastMouseDownTime = time.Now()
+			}
 		}
 		return 0
 

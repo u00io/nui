@@ -437,7 +437,7 @@ func (c *nativeWindow) EventLoop() {
 								}
 								c.onMouseButtonDblClick(btn, x, y)
 							}
-							fmt.Println("dbl click detected")
+							// fmt.Println("dbl click detected")
 							dblClickDetected = true
 						}
 					}
