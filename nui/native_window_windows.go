@@ -240,6 +240,11 @@ func (c *nativeWindow) Height() int {
 	return c.windowHeight
 }
 
+func (c *nativeWindow) IsMaximized() bool {
+	ret, _, _ := procIsZoomed.Call(uintptr(c.hwnd))
+	return ret != 0
+}
+
 func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
 	return c.keyModifiers
 }

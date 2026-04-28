@@ -58,6 +58,8 @@ var (
 
 	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
 
+	procIsZoomed = user32.NewProc("IsZoomed")
+
 	modDwmapi                 = syscall.NewLazyDLL("dwmapi.dll")
 	procDwmSetWindowAttribute = modDwmapi.NewProc("DwmSetWindowAttribute")
 )

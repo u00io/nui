@@ -49,6 +49,7 @@ type Window interface {
 	Resize(width int, height int)
 	MinimizeWindow()
 	MaximizeWindow()
+	IsMaximized() bool
 
 	// Get window information
 	Size() (width, height int)

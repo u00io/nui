@@ -217,6 +217,10 @@ func (c *nativeWindow) Height() int {
 	return c.windowHeight
 }
 
+func (c *nativeWindow) IsMaximized() bool {
+	return false
+}
+
 func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
 	return c.keyModifiers
 }
