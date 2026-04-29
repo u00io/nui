@@ -274,3 +274,7 @@ func (c *nativeWindow) DrawTimeUs() int64 {
 	drawTimeAvg = drawTimeAvg / int64(count)
 	return drawTimeAvg
 }
+
+func (c *nativeWindow) SystemHandle() any {
+	return syscall.Handle(c.hwnd)
+}

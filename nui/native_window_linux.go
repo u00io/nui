@@ -48,6 +48,8 @@ type nativeWindowPlatform struct {
 
 	dtLastUpdateCalled time.Time
 	needUpdateInTimer  bool
+
+	keyModifiers nuikey.KeyModifiers
 }
 
 var mouseInside bool = false
@@ -306,16 +308,16 @@ func (c *nativeWindow) EventLoop() {
 				fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
 				if c.onKeyDown != nil {
-					c.onKeyDown(key, c.keyModifiers)
+					c.onKeyDown(key, c.platform.keyModifiers)
 				}
 				if key == nuikey.KeyShift {
-					c.keyModifiers.Shift = true
+					c.platform.keyModifiers.Shift = true
 				}
 				if key == nuikey.KeyCtrl {
-					c.keyModifiers.Ctrl = true
+					c.platform.keyModifiers.Ctrl = true
 				}
 				if key == nuikey.KeyAlt {
-					c.keyModifiers.Alt = true
+					c.platform.keyModifiers.Alt = true
 				}
 
 				var buf [32]C.char
@@ -349,16 +351,16 @@ func (c *nativeWindow) EventLoop() {
 				fmt.Printf("Key released: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
 				if key == nuikey.KeyShift {
-					c.keyModifiers.Shift = false
+					c.platform.keyModifiers.Shift = false
 				}
 				if key == nuikey.KeyCtrl {
-					c.keyModifiers.Ctrl = false
+					c.platform.keyModifiers.Ctrl = false
 				}
 				if key == nuikey.KeyAlt {
-					c.keyModifiers.Alt = false
+					c.platform.keyModifiers.Alt = false
 				}
 				if c.onKeyUp != nil {
-					c.onKeyUp(key, c.keyModifiers)
+					c.onKeyUp(key, c.platform.keyModifiers)
 				}
 
 			case C.EnterNotify:
@@ -565,7 +567,7 @@ func (c *nativeWindow) IsMaximized() bool {
 }
 
 func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
-	return c.keyModifiers
+	return c.platform.keyModifiers
 }
 
 func (c *nativeWindow) DrawTimeUs() int64 {
@@ -734,3 +736,7 @@ func (c *nativeWindow) drawImageRGBA(display *C.Display, window C.Window, img im
 	C.XFillRectangle(display, C.Drawable(window), gc, 0, 0, width/2, height/2)
 }
 */
+
+func (c *nativeWindow) SystemHandle() any {
+	return nil
+}

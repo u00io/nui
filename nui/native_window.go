@@ -2,7 +2,6 @@ package nui
 
 import (
 	"image"
-	"syscall"
 	"time"
 
 	"github.com/u00io/nui/nuikey"
@@ -57,10 +56,6 @@ type nativeWindow struct {
 	onResize       func(width, height int)
 	onCloseRequest func() bool
 	onTimer        func()
-}
-
-func (c *nativeWindow) SystemHandle() any {
-	return syscall.Handle(c.hwnd)
 }
 
 func (c *nativeWindow) OnKeyDown(f func(keyCode nuikey.Key, mods nuikey.KeyModifiers)) {
