@@ -58,7 +58,8 @@ var (
 
 	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
 
-	procIsZoomed = user32.NewProc("IsZoomed")
+	procIsZoomed    = user32.NewProc("IsZoomed")
+	procGetKeyState = user32.NewProc("GetKeyState")
 
 	modDwmapi                 = syscall.NewLazyDLL("dwmapi.dll")
 	procDwmSetWindowAttribute = modDwmapi.NewProc("DwmSetWindowAttribute")
@@ -344,6 +345,9 @@ func initCanvasBufferBackground(col color.Color) {
 func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	//fmt.Println("Message:", native.MessageName(msg))
 
+	/*ctrl, alt, shift := getModifierState()
+	fmt.Println("Keys State:", "Ctrl:", ctrl, "Alt:", alt, "Shift:", shift)*/
+
 	win := getNativeWindowByHandle(windowId(hwnd))
 
 	switch msg {
@@ -397,84 +401,39 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case c_WM_KEYDOWN:
 		scanCode := uint32(wParam)
 
-		needGenEvent := true
-
 		k := nuikey.Key(scanCode)
 		if scanCode == 0x5B || scanCode == 0x5C {
 			k = nuikey.KeyWin
 		}
 
-		if k == nuikey.KeyShift {
-			if win.keyModifiers.Shift {
-				needGenEvent = false
-			}
-			win.keyModifiers.Shift = true
-		} else if k == nuikey.KeyCtrl {
-			if win.keyModifiers.Ctrl {
-				needGenEvent = false
-			}
-			win.keyModifiers.Ctrl = true
-		} else if k == nuikey.KeyAlt {
-			if win.keyModifiers.Alt {
-				needGenEvent = false
-			}
-			win.keyModifiers.Alt = true
-		} else if k == nuikey.KeyCommand {
-			if win.keyModifiers.Cmd {
-				needGenEvent = false
-			}
-			win.keyModifiers.Cmd = true
-		}
-
-		if win != nil && win.onKeyDown != nil && needGenEvent {
-			win.onKeyDown(k, win.keyModifiers)
+		if win != nil && win.onKeyDown != nil {
+			win.onKeyDown(k, getModifierState())
 		}
 		return 0
 
 	case c_WM_KEYUP:
 		scanCode := uint32(wParam)
 
-		needGenEvent := true
 		k := nuikey.Key(scanCode)
 		if scanCode == 0x5B || scanCode == 0x5C {
 			k = nuikey.KeyWin
 		}
 
-		if k == nuikey.KeyShift {
-			if !win.keyModifiers.Shift {
-				needGenEvent = false
-			}
-			win.keyModifiers.Shift = false
-		} else if k == nuikey.KeyCtrl {
-			if !win.keyModifiers.Ctrl {
-				needGenEvent = false
-			}
-			win.keyModifiers.Ctrl = false
-		} else if k == nuikey.KeyAlt {
-			if !win.keyModifiers.Alt {
-				needGenEvent = false
-			}
-			win.keyModifiers.Alt = false
-		} else if k == nuikey.KeyCommand {
-			if !win.keyModifiers.Cmd {
-				needGenEvent = false
-			}
-			win.keyModifiers.Cmd = false
-		}
-
-		if win != nil && win.onKeyUp != nil && needGenEvent {
-			win.onKeyUp(k, win.keyModifiers)
+		if win != nil && win.onKeyUp != nil {
+			win.onKeyUp(k, getModifierState())
 		}
 		return 0
 
 	case c_WM_SYSKEYDOWN:
 		scanCode := uint32(wParam)
 
-		needGenEvent := true
-
 		k := nuikey.Key(scanCode)
 		if scanCode == 0x5B || scanCode == 0x5C {
 			k = nuikey.KeyWin
+		}
+
+		if k == nuikey.KeyF4 && getModifierState().Alt {
+			break
 		}
 
 		/*fmt.Println("SYSKEY_DOWN", k.String())
@@ -490,67 +449,21 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			break
 		}*/
 
-		if k == nuikey.KeyShift {
-			if win.keyModifiers.Shift {
-				needGenEvent = false
-			}
-			win.keyModifiers.Shift = true
-		} else if k == nuikey.KeyCtrl {
-			if win.keyModifiers.Ctrl {
-				needGenEvent = false
-			}
-			win.keyModifiers.Ctrl = true
-		} else if k == nuikey.KeyAlt {
-			if win.keyModifiers.Alt {
-				needGenEvent = false
-			}
-			win.keyModifiers.Alt = true
-		} else if k == nuikey.KeyCommand {
-			if win.keyModifiers.Cmd {
-				needGenEvent = false
-			}
-			win.keyModifiers.Cmd = true
-		}
-
-		if win != nil && win.onKeyDown != nil && needGenEvent {
-			win.onKeyDown(k, win.keyModifiers)
+		if win != nil && win.onKeyDown != nil {
+			win.onKeyDown(k, getModifierState())
 		}
 		return 0
 
 	case c_WM_SYSKEYUP:
 		scanCode := uint32(wParam)
 
-		needGenEvent := true
-
 		k := nuikey.Key(scanCode)
 		if scanCode == 0x5B || scanCode == 0x5C {
 			k = nuikey.KeyWin
 		}
 
-		if k == nuikey.KeyShift {
-			if !win.keyModifiers.Shift {
-				needGenEvent = false
-			}
-			win.keyModifiers.Shift = false
-		} else if k == nuikey.KeyCtrl {
-			if !win.keyModifiers.Ctrl {
-				needGenEvent = false
-			}
-			win.keyModifiers.Ctrl = false
-		} else if k == nuikey.KeyAlt {
-			if !win.keyModifiers.Alt {
-				needGenEvent = false
-			}
-			win.keyModifiers.Alt = false
-		} else if k == nuikey.KeyCommand {
-			if !win.keyModifiers.Cmd {
-				needGenEvent = false
-			}
-			win.keyModifiers.Cmd = false
-		}
-
-		if win != nil && win.onKeyUp != nil && needGenEvent {
-			win.onKeyUp(k, win.keyModifiers)
+		if win != nil && win.onKeyUp != nil {
+			win.onKeyUp(k, getModifierState())
 		}
 		return 0
 
@@ -896,5 +809,29 @@ func setDarkMode(hwnd uintptr, enable bool) {
 			uintptr(unsafe.Pointer(&useDark)),
 			unsafe.Sizeof(useDark),
 		)
+	}
+}
+
+const (
+	VK_SHIFT   = 0x10
+	VK_CONTROL = 0x11
+	VK_MENU    = 0x12 // Это клавиша ALT
+)
+
+func getModifierState() nuikey.KeyModifiers {
+	// Highest bit (0x8000) indicates the key is pressed
+	isPressed := func(vk int) bool {
+		ret, _, _ := procGetKeyState.Call(uintptr(vk))
+		return (uint16(ret) & 0x8000) != 0
+	}
+
+	ctrl := isPressed(VK_CONTROL)
+	alt := isPressed(VK_MENU)
+	shift := isPressed(VK_SHIFT)
+
+	return nuikey.KeyModifiers{
+		Ctrl:  ctrl,
+		Alt:   alt,
+		Shift: shift,
 	}
 }

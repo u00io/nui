@@ -16,6 +16,8 @@ type Window interface {
 	EventLoop()
 	Close()
 
+	SystemHandle() any
+
 	// Keyboard events
 	OnKeyDown(func(keyCode nuikey.Key, mods nuikey.KeyModifiers))
 	OnKeyUp(func(keyCode nuikey.Key, mods nuikey.KeyModifiers))

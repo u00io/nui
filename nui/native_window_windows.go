@@ -255,7 +255,7 @@ func (c *nativeWindow) IsMaximized() bool {
 }
 
 func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
-	return c.keyModifiers
+	return getModifierState()
 }
 
 func (c *nativeWindow) DrawTimeUs() int64 {
