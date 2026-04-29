@@ -20,6 +20,8 @@ type windowId int
 type nativeWindowPlatform struct {
 	lastCapsLockState bool
 	lastNumLockState  bool
+
+	keyModifiers nuikey.KeyModifiers
 }
 
 /*type NativeWindow struct {
@@ -224,7 +226,7 @@ func (c *nativeWindow) IsMaximized() bool {
 }
 
 func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
-	return c.keyModifiers
+	return c.platform.keyModifiers
 }
 
 func (c *nativeWindow) DrawTimeUs() int64 {
@@ -242,4 +244,8 @@ func (c *nativeWindow) DrawTimeUs() int64 {
 	}
 	drawTimeAvg = drawTimeAvg / int64(count)
 	return drawTimeAvg
+}
+
+func (c *nativeWindow) SystemHandle() any {
+	return nil
 }

@@ -370,40 +370,40 @@ func (c *nativeWindow) windowMouseLeave() {
 // key modifiers
 func (c *nativeWindow) windowKeyModifiersChanged(shift bool, ctrl bool, alt bool, cmd bool, caps bool, num bool, _ bool) {
 	// Key shift
-	if c.keyModifiers.Shift && !shift {
+	if c.platform.keyModifiers.Shift && !shift {
 		c.windowKeyUp(nuikey.KeyShift)
 	}
-	if !c.keyModifiers.Shift && shift {
+	if !c.platform.keyModifiers.Shift && shift {
 		c.windowKeyDown(nuikey.KeyShift)
 	}
-	c.keyModifiers.Shift = shift
+	c.platform.keyModifiers.Shift = shift
 
 	// Key ctrl
-	if c.keyModifiers.Ctrl && !ctrl {
+	if c.platform.keyModifiers.Ctrl && !ctrl {
 		c.windowKeyUp(nuikey.KeyCtrl)
 	}
-	if !c.keyModifiers.Ctrl && ctrl {
+	if !c.platform.keyModifiers.Ctrl && ctrl {
 		c.windowKeyDown(nuikey.KeyCtrl)
 	}
-	c.keyModifiers.Ctrl = ctrl
+	c.platform.keyModifiers.Ctrl = ctrl
 
 	// Key alt
-	if c.keyModifiers.Alt && !alt {
+	if c.platform.keyModifiers.Alt && !alt {
 		c.windowKeyUp(nuikey.KeyAlt)
 	}
-	if !c.keyModifiers.Alt && alt {
+	if !c.platform.keyModifiers.Alt && alt {
 		c.windowKeyDown(nuikey.KeyAlt)
 	}
-	c.keyModifiers.Alt = alt
+	c.platform.keyModifiers.Alt = alt
 
 	// Key cmd
-	if c.keyModifiers.Cmd && !cmd {
+	if c.platform.keyModifiers.Cmd && !cmd {
 		c.windowKeyUp(nuikey.KeyCommand)
 	}
-	if !c.keyModifiers.Cmd && cmd {
+	if !c.platform.keyModifiers.Cmd && cmd {
 		c.windowKeyDown(nuikey.KeyCommand)
 	}
-	c.keyModifiers.Cmd = cmd
+	c.platform.keyModifiers.Cmd = cmd
 
 	if caps != c.platform.lastCapsLockState {
 		if caps {
@@ -426,13 +426,13 @@ func (c *nativeWindow) windowKeyModifiersChanged(shift bool, ctrl bool, alt bool
 
 func (c *nativeWindow) windowKeyDown(keyCode nuikey.Key) {
 	if c.onKeyDown != nil {
-		c.onKeyDown(keyCode, c.keyModifiers)
+		c.onKeyDown(keyCode, c.platform.keyModifiers)
 	}
 }
 
 func (c *nativeWindow) windowKeyUp(keyCode nuikey.Key) {
 	if c.onKeyUp != nil {
-		keyModifiers := c.keyModifiers
+		keyModifiers := c.platform.keyModifiers
 		if keyCode == nuikey.KeyShift {
 			keyModifiers.Shift = false
 		}
