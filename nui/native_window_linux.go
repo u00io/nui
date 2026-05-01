@@ -51,6 +51,13 @@ type nativeWindowPlatform struct {
 
 	wmProtocols    C.Atom
 	wmDeleteWindow C.Atom
+
+	prevSetPosX int
+	prevSetPosY int
+
+	netWMState              C.Atom
+	netWMStateMaximizedHorz C.Atom
+	netWMStateMaximizedVert C.Atom
 }
 
 type rect struct {
@@ -121,6 +128,8 @@ func createWindow(title string, width int, height int, center bool, maximized bo
 	var c nativeWindow
 	c.showMaximized = maximized
 	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
+	c.platform.prevSetPosX = -1
+	c.platform.prevSetPosY = -1
 
 	c.platform.display = C.XOpenDisplay(nil)
 	if c.platform.display == nil {
@@ -166,6 +175,7 @@ func createWindow(title string, width int, height int, center bool, maximized bo
 	c.SetTitle(title)
 
 	c.initCloseProtocol()
+	c.initWindowStateAtoms()
 
 	return &c
 }
@@ -183,6 +193,21 @@ func (c *nativeWindow) initCloseProtocol() {
 	c.platform.wmDeleteWindow = C.XInternAtom(display, nameDelete, C.False)
 
 	C.XSetWMProtocols(display, window, &c.platform.wmDeleteWindow, 1)
+}
+
+func (c *nativeWindow) initWindowStateAtoms() {
+	display := c.platform.display
+
+	nameState := C.CString("_NET_WM_STATE")
+	nameMaxH := C.CString("_NET_WM_STATE_MAXIMIZED_HORZ")
+	nameMaxV := C.CString("_NET_WM_STATE_MAXIMIZED_VERT")
+	defer C.free(unsafe.Pointer(nameState))
+	defer C.free(unsafe.Pointer(nameMaxH))
+	defer C.free(unsafe.Pointer(nameMaxV))
+
+	c.platform.netWMState = C.XInternAtom(display, nameState, C.False)
+	c.platform.netWMStateMaximizedHorz = C.XInternAtom(display, nameMaxH, C.False)
+	c.platform.netWMStateMaximizedVert = C.XInternAtom(display, nameMaxV, C.False)
 }
 
 func (c *nativeWindow) Show() {
@@ -228,6 +253,17 @@ func (c *nativeWindow) EventLoop() {
 		for C.XPending(c.platform.display) > 0 {
 			var event C.XEvent
 			C.XNextEvent(c.platform.display, &event)
+
+			{
+				_, _, _, _, ok := c.getFrameExtents()
+				if ok {
+					if c.platform.prevSetPosX >= 0 && c.platform.prevSetPosY >= 0 {
+						c.Move(c.platform.prevSetPosX, c.platform.prevSetPosY)
+						c.platform.prevSetPosX = -1
+						c.platform.prevSetPosY = -1
+					}
+				}
+			}
 
 			switch eventType(event) {
 
@@ -300,9 +336,12 @@ func (c *nativeWindow) EventLoop() {
 			case C.ConfigureNotify:
 				configureEvent := (*C.XConfigureEvent)(unsafe.Pointer(&event))
 
-				if configureEvent.send_event == 1 && (c.windowPosX != int(configureEvent.x) || c.windowPosY != int(configureEvent.y)) {
-					c.windowPosX = int(configureEvent.x)
-					c.windowPosY = int(configureEvent.y)
+				prevWindowPosX := c.windowPosX
+				prevWindowPosY := c.windowPosY
+
+				c.updateWindowPos()
+
+				if configureEvent.send_event == 1 && (c.windowPosX != prevWindowPosX || c.windowPosY != prevWindowPosY) {
 					if c.onMove != nil {
 						c.onMove(c.windowPosX, c.windowPosY)
 					}
@@ -532,6 +571,16 @@ func (c *nativeWindow) SetTitle(title string) {
 }
 
 func (c *nativeWindow) Move(x, y int) {
+	c.platform.prevSetPosX = x
+	c.platform.prevSetPosY = y
+	left, _, top, _, ok := c.getFrameExtents()
+	if ok {
+		x -= left
+		y -= top
+	}
+	//fmt.Println("LINUX MOVE to:", c.platform.prevSetPosX, c.platform.prevSetPosY)
+	//fmt.Println("LINUX MOVE top:", top)
+
 	C.XMoveWindow(c.platform.display, c.platform.window, C.int(x), C.int(y))
 }
 
@@ -581,7 +630,54 @@ func (c *nativeWindow) Height() int {
 }
 
 func (c *nativeWindow) IsMaximized() bool {
-	return false
+	display := c.platform.display
+	window := c.platform.window
+
+	var actualType C.Atom
+	var actualFormat C.int
+	var nitems C.ulong
+	var bytesAfter C.ulong
+	var prop *C.uchar
+
+	status := C.XGetWindowProperty(
+		display,
+		window,
+		c.platform.netWMState,
+		0,
+		1024,
+		C.False,
+		C.XA_ATOM,
+		&actualType,
+		&actualFormat,
+		&nitems,
+		&bytesAfter,
+		&prop,
+	)
+
+	if status != C.Success || prop == nil {
+		return false
+	}
+	defer C.XFree(unsafe.Pointer(prop))
+
+	if actualType != C.XA_ATOM || actualFormat != 32 || nitems == 0 {
+		return false
+	}
+
+	atoms := unsafe.Slice((*C.Atom)(unsafe.Pointer(prop)), int(nitems))
+
+	hasHorz := false
+	hasVert := false
+
+	for _, atom := range atoms {
+		if atom == c.platform.netWMStateMaximizedHorz {
+			hasHorz = true
+		}
+		if atom == c.platform.netWMStateMaximizedVert {
+			hasVert = true
+		}
+	}
+
+	return hasHorz && hasVert
 }
 
 func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
@@ -782,4 +878,76 @@ func (c *nativeWindow) getModifierState() nuikey.KeyModifiers {
 		Ctrl:  (mask & C.ControlMask) != 0,
 		Alt:   (mask & C.Mod1Mask) != 0,
 	}
+}
+
+func (c *nativeWindow) getFrameExtents() (left, right, top, bottom int, ok bool) {
+	display := c.platform.display
+	window := c.platform.window
+
+	name := C.CString("_NET_FRAME_EXTENTS")
+	defer C.free(unsafe.Pointer(name))
+
+	atom := C.XInternAtom(display, name, C.False)
+
+	var actualType C.Atom
+	var actualFormat C.int
+	var nitems C.ulong
+	var bytesAfter C.ulong
+	var prop *C.uchar
+
+	status := C.XGetWindowProperty(
+		display,
+		window,
+		atom,
+		0,
+		4,
+		C.False,
+		C.XA_CARDINAL,
+		&actualType,
+		&actualFormat,
+		&nitems,
+		&bytesAfter,
+		&prop,
+	)
+
+	if status != C.Success || prop == nil {
+		return 0, 0, 0, 0, false
+	}
+	defer C.XFree(unsafe.Pointer(prop))
+
+	if actualType != C.XA_CARDINAL || actualFormat != 32 || nitems < 4 {
+		return 0, 0, 0, 0, false
+	}
+
+	data := (*[4]C.ulong)(unsafe.Pointer(prop))
+
+	left = int(data[0])
+	right = int(data[1])
+	top = int(data[2])
+	bottom = int(data[3])
+
+	return left, right, top, bottom, true
+}
+
+func (c *nativeWindow) updateWindowPos() {
+	display := c.platform.display
+	window := c.platform.window
+	root := C.XRootWindow(display, c.platform.screen)
+
+	var x, y C.int
+	var child C.Window
+
+	if C.XTranslateCoordinates(
+		display,
+		window,
+		root,
+		0, 0,
+		&x, &y,
+		&child,
+	) == 0 {
+		return
+	}
+
+	c.windowPosX = int(x)
+	c.windowPosY = int(y)
 }

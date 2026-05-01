@@ -56,7 +56,7 @@ func Run() {
 		case nuikey.KeyF4:
 			win.Resize(640, 480)
 		case nuikey.KeyF5:
-			win.Move(100, 100)
+			win.Move(458, 141)
 		case nuikey.KeyF6:
 			win.MoveToCenterOfScreen()
 		case nuikey.KeyF7:
