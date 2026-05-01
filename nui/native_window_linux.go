@@ -48,11 +48,7 @@ type nativeWindowPlatform struct {
 
 	dtLastUpdateCalled time.Time
 	needUpdateInTimer  bool
-
-	keyModifiers nuikey.KeyModifiers
 }
-
-var mouseInside bool = false
 
 type rect struct {
 	left, top, right, bottom int32
@@ -308,16 +304,7 @@ func (c *nativeWindow) EventLoop() {
 				fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
 				if c.onKeyDown != nil {
-					c.onKeyDown(key, c.platform.keyModifiers)
-				}
-				if key == nuikey.KeyShift {
-					c.platform.keyModifiers.Shift = true
-				}
-				if key == nuikey.KeyCtrl {
-					c.platform.keyModifiers.Ctrl = true
-				}
-				if key == nuikey.KeyAlt {
-					c.platform.keyModifiers.Alt = true
+					c.onKeyDown(key, c.getModifierState())
 				}
 
 				var buf [32]C.char
@@ -350,17 +337,8 @@ func (c *nativeWindow) EventLoop() {
 				keySym := C.XLookupKeysym(keyEvent, 0)
 				fmt.Printf("Key released: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
-				if key == nuikey.KeyShift {
-					c.platform.keyModifiers.Shift = false
-				}
-				if key == nuikey.KeyCtrl {
-					c.platform.keyModifiers.Ctrl = false
-				}
-				if key == nuikey.KeyAlt {
-					c.platform.keyModifiers.Alt = false
-				}
 				if c.onKeyUp != nil {
-					c.onKeyUp(key, c.platform.keyModifiers)
+					c.onKeyUp(key, c.getModifierState())
 				}
 
 			case C.EnterNotify:
@@ -567,7 +545,7 @@ func (c *nativeWindow) IsMaximized() bool {
 }
 
 func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
-	return c.platform.keyModifiers
+	return c.getModifierState()
 }
 
 func (c *nativeWindow) DrawTimeUs() int64 {
@@ -739,4 +717,29 @@ func (c *nativeWindow) drawImageRGBA(display *C.Display, window C.Window, img im
 
 func (c *nativeWindow) SystemHandle() any {
 	return nil
+}
+
+func (c *nativeWindow) getModifierState() nuikey.KeyModifiers {
+	display := (*C.Display)(c.platform.display)
+	window := (C.Window)(c.platform.window)
+
+	var rootRet, childRet C.Window
+	var rootX, rootY, winX, winY C.int
+	var mask C.uint
+
+	C.XQueryPointer(
+		display,
+		window,
+		&rootRet,
+		&childRet,
+		&rootX, &rootY,
+		&winX, &winY,
+		&mask,
+	)
+
+	return nuikey.KeyModifiers{
+		Shift: (mask & C.ShiftMask) != 0,
+		Ctrl:  (mask & C.ControlMask) != 0,
+		Alt:   (mask & C.Mod1Mask) != 0,
+	}
 }
