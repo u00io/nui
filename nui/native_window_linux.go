@@ -48,6 +48,9 @@ type nativeWindowPlatform struct {
 
 	dtLastUpdateCalled time.Time
 	needUpdateInTimer  bool
+
+	wmProtocols    C.Atom
+	wmDeleteWindow C.Atom
 }
 
 type rect struct {
@@ -162,7 +165,24 @@ func createWindow(title string, width int, height int, center bool, maximized bo
 
 	c.SetTitle(title)
 
+	c.initCloseProtocol()
+
 	return &c
+}
+
+func (c *nativeWindow) initCloseProtocol() {
+	display := (*C.Display)(c.platform.display)
+	window := C.Window(c.platform.window)
+
+	nameProtocols := C.CString("WM_PROTOCOLS")
+	nameDelete := C.CString("WM_DELETE_WINDOW")
+	defer C.free(unsafe.Pointer(nameProtocols))
+	defer C.free(unsafe.Pointer(nameDelete))
+
+	c.platform.wmProtocols = C.XInternAtom(display, nameProtocols, C.False)
+	c.platform.wmDeleteWindow = C.XInternAtom(display, nameDelete, C.False)
+
+	C.XSetWMProtocols(display, window, &c.platform.wmDeleteWindow, 1)
 }
 
 func (c *nativeWindow) Show() {
@@ -459,7 +479,27 @@ func (c *nativeWindow) EventLoop() {
 					}
 				}
 
+			case C.ClientMessage:
+				xclient := (*C.XClientMessageEvent)(unsafe.Pointer(&event))
+				data0 := *(*C.long)(unsafe.Pointer(&xclient.data[0]))
+
+				if xclient.message_type == c.platform.wmProtocols &&
+					C.Atom(data0) == c.platform.wmDeleteWindow {
+
+					allowClose := true
+					if c.onCloseRequest != nil {
+						allowClose = c.onCloseRequest()
+					}
+
+					if allowClose {
+						C.XDestroyWindow(
+							(*C.Display)(c.platform.display),
+							C.Window(c.platform.window),
+						)
+					}
+				}
 			}
+
 		}
 
 		select {
