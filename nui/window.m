@@ -1,5 +1,8 @@
 //go:build darwin
 // +build darwin
+//
+// Cocoa integration: NSWindow + custom NSView. Client-size API (matches Windows):
+// Resize uses setContentSize; Pos Y is top-down; paint buffer matches layout rect inside the content view.
 
 #import <Cocoa/Cocoa.h>
 #import <dispatch/dispatch.h>
@@ -20,7 +23,7 @@ static void InitWindowMap() {
     windowMap = [NSMutableDictionary new];
 }
 
-/// Distance from top of screen to top of window (matches SetWindowPosition), not Cocoa frame.origin.y.
+// Top-down Y distance from screen top to window top (inverse of Cocoa frame.origin.y). Matches SetWindowPosition input.
 static int NUI_WindowTopOriginY(NSWindow *w) {
     if (!w) return -1;
     NSRect frame = [w frame];
@@ -30,6 +33,7 @@ static int NUI_WindowTopOriginY(NSWindow *w) {
     return (int)(screenFrame.size.height - frame.origin.y - frame.size.height);
 }
 
+// Pushes NSWindow.contentLayoutRect size to Go OnResize / Size fields (same as CreateWindow width/height on Mac).
 static void NUI_ReportClientSizeToGo(int windowId, NSWindow *win) {
     if (!win) return;
     NSRect lr = [win contentLayoutRect];
@@ -38,7 +42,7 @@ static void NUI_ReportClientSizeToGo(int windowId, NSWindow *win) {
     go_on_resize(windowId, w, h);
 }
 
-/// contentLayoutRect mapped into the content view, clipped to bounds (actual drawable region — matches GetClientArea geometry).
+// Region NUI actually paints: contentLayoutRect in contentView coords, clipped to the view's bounds.
 static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
     if (!cv) {
         return NSZeroRect;
@@ -65,6 +69,7 @@ static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
     return YES;
 }
 
+// Report top-left Pos (see NUI_WindowTopOriginY); X stays frame.origin.x.
 - (void)windowDidMove:(NSNotification *)notification {
     NSWindow *window = notification.object;
     int windowId = (int)window.windowNumber;
@@ -91,6 +96,7 @@ static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
 @property (strong) NSTrackingArea *trackingArea;
 @end
 
+// Full-window content NSView hosting the software framebuffer and input.
 @implementation GoPaintView
 
 - (BOOL)acceptsFirstResponder {
@@ -101,6 +107,7 @@ static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
     return YES;
 }
 
+// Window chrome can change without our Resize call; always resync client size to Go.
 - (void)setFrameSize:(NSSize)newSize {
     [super setFrameSize:newSize];
 
@@ -230,6 +237,7 @@ static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
     [self addTrackingArea:self.trackingArea];
 }
 
+// Default Cocoa coords: origin bottom-left (Go mouse Y is flipped when delivered).
 - (BOOL)isFlipped { return NO; }
 
 static void buffer_release_callback(void* info, const void* data, size_t size) {
@@ -239,6 +247,7 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
 - (void)drawRect:(NSRect)dirtyRect {
     uint64_t start = mach_absolute_time();
 
+    // Buffer size / dest rect = drawable inside content view (not always full bounds).
     NSWindow *win = self.window;
     if (!win) {
         return;
@@ -280,6 +289,7 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
     );
 
     CGContextSaveGState(ctx);
+    // Matches default darwin canvas clear in Go until SetBackgroundColor is bridged here.
     CGContextSetRGBFillColor(ctx, 0.0f, 50.0f / 255.0f, 0.0f, 1.0f);
     CGContextFillRect(ctx, boundsCG);
     CGContextDrawImage(ctx, dest, image);
@@ -321,6 +331,7 @@ int InitWindow(void) {
 
         Log(3);
 
+        // initWithContentRect: size is inner content rect; Go Resize overwrites via setContentSize.
         NSRect frame = NSMakeRect(100, 100, 800, 600);
         NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable;
 
@@ -382,12 +393,14 @@ void SetWindowTitle(int windowId, const char* title) {
     }
 }
 
+// width/height: client (content) area, like Win32 CreateWindow client rect.
 void SetWindowSize(int windowId, int width, int height) {
     NSWindow *w = windowMap[@(windowId)];
     if (!w || width <= 0 || height <= 0) return;
     [w setContentSize:NSMakeSize((CGFloat)width, (CGFloat)height)];
 }
 
+// x, y: top-left of the NSWindow frame; still moves full window (uses outer frame height for Cocoa Y).
 void SetWindowPosition(int windowId, int x, int y) {
     NSWindow *w = windowMap[@(windowId)];
     if (w) {
@@ -431,6 +444,7 @@ void ShowWindow(int windowId) {
     [w makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 
+    // Deferred so layout/tab bar etc. settle; fires one client-size sync to Go.
     dispatch_async(dispatch_get_main_queue(), ^{
         NSWindow *ww = windowMap[@(windowId)];
         if (!ww) return;
@@ -476,6 +490,7 @@ int GetWindowPositionY(int windowId) {
     return NUI_WindowTopOriginY(win);
 }
 
+// Window "size" getters: client/layout content size (same numbers as Resize / WM_SIZE parity on Windows).
 int GetWindowWidth(int windowId) {
     NSWindow *win = windowMap[@(windowId)];
     if (!win) return -1;
@@ -543,6 +558,7 @@ void UpdateWindow(int windowId) {
 }
 
 
+// NSScreen.mainScreen frame in points (used for MoveToCenter in Go).
 int GetScreenWidth() {
     return (int)[[NSScreen mainScreen] frame].size.width;
 }
@@ -551,6 +567,7 @@ int GetScreenHeight() {
     return (int)[[NSScreen mainScreen] frame].size.height;
 }
 
+// cursorType mirrors native_window_darwin.macSetMouseCursor switch.
 void SetMacCursor(int cursorType) {
     switch (cursorType) {
         case 1: // Arrow
@@ -569,7 +586,6 @@ void SetMacCursor(int cursorType) {
             [[NSCursor IBeamCursor] set];
             break;
         default:
-            // Можно сбросить в Arrow или оставить как есть
             [[NSCursor arrowCursor] set];
             break;
     }

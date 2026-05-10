@@ -1,5 +1,7 @@
 package nui
 
+// Darwin: CGO callbacks from window.m plus Mac-specific input / size helpers.
+
 /*
 #include "window.h"
 */
@@ -17,6 +19,7 @@ import (
 
 //export go_on_paint
 func go_on_paint(hwnd C.int, ptr unsafe.Pointer, width C.int, height C.int) {
+	// width/height come from drawRect drawable rect in window.m.
 	img := &image.RGBA{
 		Pix:    unsafe.Slice((*uint8)(ptr), int(width*height*4)),
 		Stride: int(width) * 4,
@@ -30,6 +33,7 @@ func go_on_paint(hwnd C.int, ptr unsafe.Pointer, width C.int, height C.int) {
 
 //export go_on_resize
 func go_on_resize(hwnd C.int, width C.int, height C.int) {
+	// width/height: NSWindow.contentLayoutRect (client area)
 	if win, ok := hwnds[windowId(hwnd)]; ok {
 		win.windowResized(int(width), int(height))
 	}
@@ -96,6 +100,7 @@ func convertMacMouseButtons(button C.int) nuimouse.MouseButton {
 
 //export go_on_window_move
 func go_on_window_move(hwnd C.int, x C.int, y C.int) {
+	// x,Y: frame left and top-down Y from window.m (matches Move()).
 	if win, ok := hwnds[windowId(hwnd)]; ok {
 		win.windowMoved(int(x), int(y))
 	}
@@ -183,6 +188,7 @@ func go_on_timer(hwnd C.int) {
 	}
 }
 
+// Main display frame in points (see window.m GetScreenWidth / Height).
 func GetScreenSize() (width, height int) {
 	width = int(C.GetScreenWidth())
 	height = int(C.GetScreenHeight())
@@ -333,6 +339,7 @@ func (c *nativeWindow) stopTimer() {
 
 func (c *nativeWindow) windowMouseMove(x, y int) {
 	if c.onMouseMove != nil {
+		// NSView coords: origin bottom-left; nui uses top-left Y.
 		_, areaH := c.requestClientAreaSize()
 		y = areaH - y
 		c.onMouseMove(x, y)
@@ -341,6 +348,7 @@ func (c *nativeWindow) windowMouseMove(x, y int) {
 }
 
 func (c *nativeWindow) windowResized(width, height int) {
+	// Client-area width/height from window.m (contentLayoutRect).
 	c.windowWidth = width
 	c.windowHeight = height
 	if c.onResize != nil {
@@ -496,6 +504,7 @@ func (c *nativeWindow) windowChar(char rune) {
 
 func (c *nativeWindow) windowMouseButtonDown(button nuimouse.MouseButton, x, y int) {
 	if c.onMouseButtonDown != nil {
+		// Flip Y: see windowMouseMove.
 		_, areaH := c.requestClientAreaSize()
 		y = areaH - y
 		c.onMouseButtonDown(button, x, y)
@@ -505,6 +514,7 @@ func (c *nativeWindow) windowMouseButtonDown(button nuimouse.MouseButton, x, y i
 
 func (c *nativeWindow) windowMouseButtonUp(button nuimouse.MouseButton, x, y int) {
 	if c.onMouseButtonUp != nil {
+		// Flip Y: see windowMouseMove.
 		_, areaH := c.requestClientAreaSize()
 		y = areaH - y
 		c.onMouseButtonUp(button, x, y)
@@ -514,6 +524,7 @@ func (c *nativeWindow) windowMouseButtonUp(button nuimouse.MouseButton, x, y int
 
 func (c *nativeWindow) windowMouseButtonDblClick(button nuimouse.MouseButton, x, y int) {
 	if c.onMouseButtonDblClick != nil {
+		// Flip Y: see windowMouseMove.
 		_, areaH := c.requestClientAreaSize()
 		y = areaH - y
 		c.onMouseButtonDblClick(button, x, y)
@@ -529,18 +540,21 @@ func (c *nativeWindow) windowMoved(x, y int) {
 	}
 }
 
+// Frame position: X is Cocoa left edge; Y is top-down distance to window top (window.m helpers).
 func (c *nativeWindow) requestWindowPosition() (int, int) {
 	x := int(C.GetWindowPositionX(C.int(c.hwnd)))
 	y := int(C.GetWindowPositionY(C.int(c.hwnd)))
 	return x, y
 }
 
+// Client-area size via contentLayoutRect (same C getters as GetWindowWidth/Height in window.m).
 func (c *nativeWindow) requestWindowSize() (int, int) {
 	w := int(C.GetWindowWidth(C.int(c.hwnd)))
 	h := int(C.GetWindowHeight(C.int(c.hwnd)))
 	return w, h
 }
 
+// On Darwin, identical dimensions to requestWindowSize (thin bridge to ObjC symmetry).
 func (c *nativeWindow) requestClientAreaSize() (int, int) {
 	w := int(C.GetClientAreaWidth(C.int(c.hwnd)))
 	h := int(C.GetClientAreaHeight(C.int(c.hwnd)))

@@ -17,6 +17,8 @@ import (
 	"github.com/u00io/nui/nuimouse"
 )
 
+// Darwin/Cocoa implementation; window chrome and bridges live in window.m.
+
 type windowId int
 type nativeWindowPlatform struct {
 	lastCapsLockState bool
@@ -76,6 +78,7 @@ func init() {
 /////////////////////////////////////////////////////
 // Window creation and management
 
+// width, height: client/content size (setContentSize), same units as OnResize on this platform.
 func createWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) *nativeWindow {
 	var c nativeWindow
 
@@ -84,11 +87,13 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
 
 	c.hwnd = windowId(C.InitWindow())
+	// Register before Resize so ObjC-triggered go_on_resize reaches Go with a populated hwnds map.
 	hwnds[c.hwnd] = &c
 
 	c.Resize(width, height)
 	c.windowWidth = int(width)
 	c.windowHeight = int(height)
+	// Re-read in case AppKit adjusted the content rect by a pixel.
 	if w, h := c.requestWindowSize(); w >= 0 && h >= 0 {
 		c.windowWidth, c.windowHeight = w, h
 	}
@@ -158,6 +163,7 @@ func (c *nativeWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
 	c.macSetMouseCursor(c.currentCursor)
 }
 
+// Maps nuimouse kinds to IDs consumed by window.m SetMacCursor.
 func (c *nativeWindow) macSetMouseCursor(cursor nuimouse.MouseCursor) {
 	if c.lastSetCursor == cursor {
 		return
@@ -187,6 +193,7 @@ func (c *nativeWindow) Move(x, y int) {
 	C.SetWindowPosition(C.int(c.hwnd), C.int(x), C.int(y))
 }
 
+// Uses Size() client dimensions vs main screen frame (aligned with Windows centering heuristic).
 func (c *nativeWindow) MoveToCenterOfScreen() {
 	screenWidth, screenHeight := GetScreenSize()
 	windowWidth, windowHeight := c.Size()
@@ -196,7 +203,7 @@ func (c *nativeWindow) MoveToCenterOfScreen() {
 }
 
 func (c *nativeWindow) Resize(width, height int) {
-	C.SetWindowSize(C.int(c.hwnd), C.int(width), C.int(height))
+	C.SetWindowSize(C.int(c.hwnd), C.int(width), C.int(height)) // NSWindow setContentSize
 }
 
 func (c *nativeWindow) MinimizeWindow() {
@@ -210,6 +217,7 @@ func (c *nativeWindow) MaximizeWindow() {
 //////////////////////////////////////////////////
 // Window information
 
+// Client-area size; updated from go_on_resize (contentLayoutRect).
 func (c *nativeWindow) Size() (width, height int) {
 	return c.windowWidth, c.windowHeight
 }
