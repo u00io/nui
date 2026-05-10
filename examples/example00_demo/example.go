@@ -30,7 +30,7 @@ func log(s string) {
 }
 
 func Run() {
-	win := nui.CreateWindow("App", 800, 600, true, false)
+	win := nui.CreateWindow("App", 10, 10, 800, 600, false, false)
 
 	var timerCounter = 0
 	var mousePosX, mousePosY = 0, 0

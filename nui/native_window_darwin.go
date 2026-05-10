@@ -76,7 +76,7 @@ func init() {
 /////////////////////////////////////////////////////
 // Window creation and management
 
-func createWindow(title string, width int, height int, center bool, maximized bool) *nativeWindow {
+func createWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) *nativeWindow {
 	var c nativeWindow
 
 	c.showMaximized = maximized
@@ -85,13 +85,21 @@ func createWindow(title string, width int, height int, center bool, maximized bo
 
 	c.hwnd = windowId(C.InitWindow())
 
-	x, y := c.requestWindowPosition()
-	c.windowPosX = int(x)
-	c.windowPosY = int(y)
+	c.windowWidth = int(width)
+	c.windowHeight = int(height)
+	c.Resize(c.windowWidth, c.windowHeight)
 
-	w, h := c.requestWindowSize()
-	c.windowWidth = int(w)
-	c.windowHeight = int(h)
+	c.SetTitle(title)
+
+	if c.showMaximized {
+		c.MaximizeWindow()
+	} else if center {
+		c.MoveToCenterOfScreen()
+	} else {
+		c.Move(posX, posY)
+	}
+
+	c.windowPosX, c.windowPosY = c.requestWindowPosition()
 
 	hwnds[c.hwnd] = &c
 	c.startTimer(1)

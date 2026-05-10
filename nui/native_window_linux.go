@@ -124,7 +124,7 @@ func initCanvasBufferBackground(col color.Color) {
 
 ///////////////////////////////////////////////////////////////////
 
-func createWindow(title string, width int, height int, center bool, maximized bool) *nativeWindow {
+func createWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) *nativeWindow {
 	var c nativeWindow
 	c.showMaximized = maximized
 	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})

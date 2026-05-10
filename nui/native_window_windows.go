@@ -21,7 +21,7 @@ type nativeWindowPlatform struct {
 // ///////////////////////////////////////////////////
 // Window creation and management
 
-func createWindow(title string, width int, height int, center bool, maximized bool) *nativeWindow {
+func createWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) *nativeWindow {
 	var c nativeWindow
 	c.dblClickTime = 300 * time.Millisecond
 	c.showMaximized = maximized

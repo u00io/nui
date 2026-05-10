@@ -45,13 +45,13 @@ func makeDefaultIcon() *image.RGBA {
 	return icon
 }
 
-func CreateWindow(title string, width int, height int, center bool, maximized bool) Window {
-	w := createWindow(title, width, height, center, maximized)
+func CreateWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) Window {
+	w := createWindow(title, posX, posY, width, height, center, maximized)
 	w.SetAppIcon(makeDefaultIcon())
 	return w
 }
 
 func CreateDefaultWindow() Window {
-	w := CreateWindow("App", 800, 600, true, false)
+	w := CreateWindow("App", 100, 100, 800, 600, true, false)
 	return w
 }

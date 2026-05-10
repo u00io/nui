@@ -23,7 +23,7 @@ func Run() {
 	totalCounter := 0
 	counter := 0
 	speed := float64(0)
-	wnd := nui.CreateWindow("App", 800, 600, true, true)
+	wnd := nui.CreateWindow("App", 100, 100, 800, 600, true, true)
 	wnd.Show()
 	wnd.OnPaint(func(rgba *image.RGBA) {
 		posX := 2 * int(time.Now().UnixMilli()%10000) / 20
