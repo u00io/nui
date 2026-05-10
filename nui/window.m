@@ -20,6 +20,16 @@ static void InitWindowMap() {
     windowMap = [NSMutableDictionary new];
 }
 
+/// Distance from top of screen to top of window (matches SetWindowPosition), not Cocoa frame.origin.y.
+static int NUI_WindowTopOriginY(NSWindow *w) {
+    if (!w) return -1;
+    NSRect frame = [w frame];
+    NSScreen *screen = [w screen];
+    if (!screen) screen = [NSScreen mainScreen];
+    NSRect screenFrame = [screen frame];
+    return (int)(screenFrame.size.height - frame.origin.y - frame.size.height);
+}
+
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
 
@@ -32,8 +42,8 @@ static void InitWindowMap() {
 - (void)windowDidMove:(NSNotification *)notification {
     NSWindow *window = notification.object;
     int windowId = (int)window.windowNumber;
-    NSPoint pos = [window frame].origin;
-    go_on_window_move(windowId, (int)pos.x, (int)pos.y); // вызов в Go
+    NSRect frame = [window frame];
+    go_on_window_move(windowId, (int)frame.origin.x, NUI_WindowTopOriginY(window));
 }
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {
@@ -429,8 +439,7 @@ int GetWindowPositionX(int windowId) {
 
 int GetWindowPositionY(int windowId) {
     NSWindow *win = windowMap[@(windowId)];
-    if (!win) return -1;
-    return (int)win.frame.origin.y;
+    return NUI_WindowTopOriginY(win);
 }
 
 int GetWindowWidth(int windowId) {
