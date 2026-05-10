@@ -14,7 +14,7 @@ import (
 
 var logItems = make([]string, 0)
 
-var allowCloseWindow = false
+var allowCloseWindow = true
 
 func log(s string) {
 	dtStr := time.Now().Format("15:04:05.999")
@@ -90,7 +90,7 @@ func Run() {
 		case nuikey.Key5:
 			win.SetBackgroundColor(color.RGBA{255, 255, 255, 255})
 		case nuikey.Key6:
-			allowCloseWindow = true
+			allowCloseWindow = false
 		}
 		win.Update()
 	})

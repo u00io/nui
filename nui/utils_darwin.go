@@ -47,6 +47,11 @@ func go_on_close_request(hwnd C.int) C.int {
 	return 0
 }
 
+//export go_on_window_will_close
+func go_on_window_will_close(hwnd C.int) {
+	delete(hwnds, windowId(hwnd))
+}
+
 //export go_on_key_down
 func go_on_key_down(hwnd C.int, code C.int) {
 	key := nuikey.Key(ConvertMacOSKeyToNuiKey(int(code)))

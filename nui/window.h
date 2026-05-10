@@ -48,5 +48,6 @@ void go_on_mouse_double_click(int hwnd, int button, int x, int y);
 void go_on_timer(int hwnd);
 void go_on_resize(int windowId, int width, int height);
 int go_on_close_request(int windowId);
+void go_on_window_will_close(int windowId);
 
 #endif

@@ -44,6 +44,7 @@ static void InitWindowMap() {
     NSWindow *window = notification.object;
     int windowId = (int)[window windowNumber];
     StopTimer(windowId);
+    go_on_window_will_close(windowId);
     [windowMap removeObjectForKey:@(windowId)];
 }
 

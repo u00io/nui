@@ -3,6 +3,7 @@ package nui
 /*
 #cgo CFLAGS: -x objective-c
 #cgo LDFLAGS: -framework Cocoa -framework CoreGraphics
+#include <stdlib.h>
 #include "window.h"
 */
 import "C"
@@ -117,7 +118,9 @@ func (c *nativeWindow) Close() {
 // Window appearance
 
 func (c *nativeWindow) SetTitle(title string) {
-	C.SetWindowTitle(C.int(c.hwnd), C.CString(title))
+	cs := C.CString(title)
+	defer C.free(unsafe.Pointer(cs))
+	C.SetWindowTitle(C.int(c.hwnd), cs)
 }
 
 func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
