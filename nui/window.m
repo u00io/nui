@@ -30,6 +30,24 @@ static int NUI_WindowTopOriginY(NSWindow *w) {
     return (int)(screenFrame.size.height - frame.origin.y - frame.size.height);
 }
 
+/// contentLayoutRect mapped into the content view, clipped to bounds (actual drawable region — matches GetClientArea geometry).
+static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
+    if (!cv) {
+        return NSZeroRect;
+    }
+    if (!win) {
+        return cv.bounds;
+    }
+    NSRect drawable = NSIntersectionRect(
+        [cv convertRect:[win contentLayoutRect] fromView:nil],
+        cv.bounds
+    );
+    if (NSIsEmptyRect(drawable) || drawable.size.width < 1.0 || drawable.size.height < 1.0) {
+        drawable = cv.bounds;
+    }
+    return drawable;
+}
+
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
 
@@ -78,8 +96,12 @@ static int NUI_WindowTopOriginY(NSWindow *w) {
 - (void)setFrameSize:(NSSize)newSize {
     [super setFrameSize:newSize];
 
-    int windowId = (int)[self.window windowNumber];
-    go_on_resize(windowId, (int)newSize.width, (int)newSize.height);
+    NSWindow *win = self.window;
+    if (!win) return;
+    NSRect dr = NUI_DrawableRectInContentView(win, self);
+    int w = (int)MAX(1.0, floor(dr.size.width));
+    int h = (int)MAX(1.0, floor(dr.size.height));
+    go_on_resize((int)[win windowNumber], w, h);
 }
 
 - (void)keyUp:(NSEvent *)event {
@@ -212,31 +234,50 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
 - (void)drawRect:(NSRect)dirtyRect {
     uint64_t start = mach_absolute_time();
 
-    int width = (int)self.bounds.size.width;
-    int height = (int)self.bounds.size.height;
+    NSWindow *win = self.window;
+    if (!win) {
+        return;
+    }
+
+    NSRect drawable = NUI_DrawableRectInContentView(win, self);
+
+    NSInteger iW = MAX(1, (NSInteger)floor(drawable.size.width));
+    NSInteger iH = MAX(1, (NSInteger)floor(drawable.size.height));
+    int width = (int)iW;
+    int height = (int)iH;
     int stride = width * 4;
-    size_t dataSize = stride * height;
+    size_t dataSize = (size_t)stride * (size_t)height;
 
     uint8_t* buffer = (uint8_t*)malloc(dataSize);
     if (!buffer) return;
 
-
-    //memset(buffer, 255, dataSize); 
-
-    go_on_paint((int)[self.window windowNumber], buffer, width, height);
+    go_on_paint((int)[win windowNumber], buffer, width, height);
 
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, buffer, dataSize, buffer_release_callback);
 
-    CGImageRef image = CGImageCreate(width, height, 8, 32, stride, colorSpace,
+    CGImageRef image = CGImageCreate((size_t)width, (size_t)height, 8, 32, stride, colorSpace,
                                      kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big,
                                      provider, NULL, false, kCGRenderingIntentDefault);
 
+    CGRect boundsCG = CGRectMake(
+        CGRectGetMinX(self.bounds),
+        CGRectGetMinY(self.bounds),
+        CGRectGetWidth(self.bounds),
+        CGRectGetHeight(self.bounds)
+    );
+    CGRect dest = CGRectMake(
+        floor(CGRectGetMinX(drawable)),
+        floor(CGRectGetMinY(drawable)),
+        (CGFloat)width,
+        (CGFloat)height
+    );
+
     CGContextSaveGState(ctx);
-
-    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), image);
-
+    CGContextSetRGBFillColor(ctx, 0.0f, 50.0f / 255.0f, 0.0f, 1.0f);
+    CGContextFillRect(ctx, boundsCG);
+    CGContextDrawImage(ctx, dest, image);
     CGContextRestoreGState(ctx);
 
     CGImageRelease(image);
@@ -250,7 +291,7 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
     }
     uint64_t elapsedNano = (end - start) * info.numer / info.denom;
     uint64_t elapsedMicro = elapsedNano / 1000;
-    go_on_declare_draw_time((int)[self.window windowNumber], (int)elapsedMicro);
+    go_on_declare_draw_time((int)[win windowNumber], (int)elapsedMicro);
 }
 
 @end
@@ -399,8 +440,10 @@ void ShowWindow(int windowId) {
         if (!ww) return;
         NSView *cv = [ww contentView];
         if (!cv) return;
-        NSSize sz = cv.bounds.size;
-        go_on_resize(windowId, (int)sz.width, (int)sz.height);
+        NSRect dr = NUI_DrawableRectInContentView(ww, cv);
+        int w = (int)MAX(1.0, floor(dr.size.width));
+        int h = (int)MAX(1.0, floor(dr.size.height));
+        go_on_resize(windowId, w, h);
     });
 }
 
