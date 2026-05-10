@@ -2,6 +2,7 @@
 // +build darwin
 
 #import <Cocoa/Cocoa.h>
+#import <dispatch/dispatch.h>
 #import <mach/mach_time.h>
 #import "window.h"
 #include <pthread.h>
@@ -381,6 +382,16 @@ void ShowWindow(int windowId) {
 
     [w makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
+
+    // One resize after layout is stable so Go can lay out to the visible content size.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSWindow *ww = windowMap[@(windowId)];
+        if (!ww) return;
+        NSView *cv = [ww contentView];
+        if (!cv) return;
+        NSSize sz = cv.bounds.size;
+        go_on_resize(windowId, (int)sz.width, (int)sz.height);
+    });
 }
 
 void SetAppIconFromRGBA(const char* data, int width, int height) {
