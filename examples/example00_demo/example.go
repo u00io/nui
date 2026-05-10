@@ -14,6 +14,8 @@ import (
 
 var logItems = make([]string, 0)
 
+var allowCloseWindow = false
+
 func log(s string) {
 	dtStr := time.Now().Format("15:04:05.999")
 	for len(dtStr) < 12 {
@@ -87,6 +89,8 @@ func Run() {
 			win.SetBackgroundColor(color.RGBA{0, 0, 255, 255})
 		case nuikey.Key5:
 			win.SetBackgroundColor(color.RGBA{255, 255, 255, 255})
+		case nuikey.Key6:
+			allowCloseWindow = true
 		}
 		win.Update()
 	})
@@ -212,6 +216,10 @@ func Run() {
 		for i, s := range logItems {
 			cnv.DrawFixedString(400, 20+float64(10+20*i), s, 2)
 		}
+	})
+
+	win.OnCloseRequest(func() bool {
+		return allowCloseWindow
 	})
 
 	win.Show()

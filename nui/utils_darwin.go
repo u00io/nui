@@ -35,6 +35,18 @@ func go_on_resize(hwnd C.int, width C.int, height C.int) {
 	}
 }
 
+//export go_on_close_request
+func go_on_close_request(hwnd C.int) C.int {
+	win, ok := hwnds[windowId(hwnd)]
+	if !ok || win.onCloseRequest == nil {
+		return 1
+	}
+	if win.onCloseRequest() {
+		return 1
+	}
+	return 0
+}
+
 //export go_on_key_down
 func go_on_key_down(hwnd C.int, code C.int) {
 	key := nuikey.Key(ConvertMacOSKeyToNuiKey(int(code)))

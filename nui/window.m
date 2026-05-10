@@ -19,7 +19,7 @@ static void InitWindowMap() {
     windowMap = [NSMutableDictionary new];
 }
 
-@interface AppDelegate : NSObject <NSApplicationDelegate>
+@interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
 
 @implementation AppDelegate
@@ -35,6 +35,17 @@ static void InitWindowMap() {
     go_on_window_move(windowId, (int)pos.x, (int)pos.y); // вызов в Go
 }
 
+- (BOOL)windowShouldClose:(NSWindow *)sender {
+    int windowId = (int)[sender windowNumber];
+    return go_on_close_request(windowId) ? YES : NO;
+}
+
+- (void)windowWillClose:(NSNotification *)notification {
+    NSWindow *window = notification.object;
+    int windowId = (int)[window windowNumber];
+    StopTimer(windowId);
+    [windowMap removeObjectForKey:@(windowId)];
+}
 
 @end
 
@@ -302,7 +313,6 @@ void CloseWindowById(int windowId) {
     NSWindow *w = windowMap[@(windowId)];
     if (w) {
         [w performClose:nil];
-        [windowMap removeObjectForKey:@(windowId)];
     }
 }
 
