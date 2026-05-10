@@ -84,10 +84,14 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
 
 	c.hwnd = windowId(C.InitWindow())
+	hwnds[c.hwnd] = &c
 
+	c.Resize(width, height)
 	c.windowWidth = int(width)
 	c.windowHeight = int(height)
-	c.Resize(c.windowWidth, c.windowHeight)
+	if w, h := c.requestWindowSize(); w >= 0 && h >= 0 {
+		c.windowWidth, c.windowHeight = w, h
+	}
 
 	c.SetTitle(title)
 
@@ -100,8 +104,6 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	}
 
 	c.windowPosX, c.windowPosY = c.requestWindowPosition()
-
-	hwnds[c.hwnd] = &c
 	c.startTimer(1)
 	return &c
 }

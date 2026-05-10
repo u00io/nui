@@ -30,6 +30,14 @@ static int NUI_WindowTopOriginY(NSWindow *w) {
     return (int)(screenFrame.size.height - frame.origin.y - frame.size.height);
 }
 
+static void NUI_ReportClientSizeToGo(int windowId, NSWindow *win) {
+    if (!win) return;
+    NSRect lr = [win contentLayoutRect];
+    int w = (int)MAX(1.0, floor(lr.size.width));
+    int h = (int)MAX(1.0, floor(lr.size.height));
+    go_on_resize(windowId, w, h);
+}
+
 /// contentLayoutRect mapped into the content view, clipped to bounds (actual drawable region — matches GetClientArea geometry).
 static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
     if (!cv) {
@@ -98,10 +106,7 @@ static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
 
     NSWindow *win = self.window;
     if (!win) return;
-    NSRect dr = NUI_DrawableRectInContentView(win, self);
-    int w = (int)MAX(1.0, floor(dr.size.width));
-    int h = (int)MAX(1.0, floor(dr.size.height));
-    go_on_resize((int)[win windowNumber], w, h);
+    NUI_ReportClientSizeToGo((int)[win windowNumber], win);
 }
 
 - (void)keyUp:(NSEvent *)event {
@@ -379,16 +384,8 @@ void SetWindowTitle(int windowId, const char* title) {
 
 void SetWindowSize(int windowId, int width, int height) {
     NSWindow *w = windowMap[@(windowId)];
-    if (w) {
-        NSRect frame = [w frame];
-        NSRect newFrame = NSMakeRect(
-            frame.origin.x,
-            frame.origin.y + frame.size.height - height,
-            width,
-            height
-        );
-        [w setFrame:newFrame display:YES animate:NO];
-    }
+    if (!w || width <= 0 || height <= 0) return;
+    [w setContentSize:NSMakeSize((CGFloat)width, (CGFloat)height)];
 }
 
 void SetWindowPosition(int windowId, int x, int y) {
@@ -434,16 +431,10 @@ void ShowWindow(int windowId) {
     [w makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 
-    // One resize after layout is stable so Go can lay out to the visible content size.
     dispatch_async(dispatch_get_main_queue(), ^{
         NSWindow *ww = windowMap[@(windowId)];
         if (!ww) return;
-        NSView *cv = [ww contentView];
-        if (!cv) return;
-        NSRect dr = NUI_DrawableRectInContentView(ww, cv);
-        int w = (int)MAX(1.0, floor(dr.size.width));
-        int h = (int)MAX(1.0, floor(dr.size.height));
-        go_on_resize(windowId, w, h);
+        NUI_ReportClientSizeToGo(windowId, ww);
     });
 }
 
@@ -488,27 +479,21 @@ int GetWindowPositionY(int windowId) {
 int GetWindowWidth(int windowId) {
     NSWindow *win = windowMap[@(windowId)];
     if (!win) return -1;
-    return (int)win.frame.size.width;
+    return (int)floor([win contentLayoutRect].size.width);
 }
 
 int GetClientAreaWidth(int windowId) {
-    NSWindow *win = windowMap[@(windowId)];
-    if (!win) return -1;
-    NSRect contentRect = [win contentLayoutRect];
-    return (int)contentRect.size.width;
+    return GetWindowWidth(windowId);
 }
 
 int GetWindowHeight(int windowId) {
     NSWindow *win = windowMap[@(windowId)];
     if (!win) return -1;
-    return (int)win.frame.size.height;
+    return (int)floor([win contentLayoutRect].size.height);
 }
 
 int GetClientAreaHeight(int windowId) {
-    NSWindow *win = windowMap[@(windowId)];
-    if (!win) return -1;
-    NSRect contentRect = [win contentLayoutRect];
-    return (int)contentRect.size.height;
+    return GetWindowHeight(windowId);
 }
 
 void timerCallback(NSTimer *timer) {
