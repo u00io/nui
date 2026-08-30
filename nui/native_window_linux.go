@@ -545,6 +545,7 @@ func (c *nativeWindow) EventLoop() {
 							(*C.Display)(c.platform.display),
 							C.Window(c.platform.window),
 						)
+						c.platform.closed = true
 					}
 				}
 			}
@@ -651,6 +652,10 @@ func (c *nativeWindow) IsMaximized() bool {
 	var nitems C.ulong
 	var bytesAfter C.ulong
 	var prop *C.uchar
+
+	if c.platform.closed {
+		return false
+	}
 
 	status := C.XGetWindowProperty(
 		display,
@@ -907,6 +912,10 @@ func (c *nativeWindow) getFrameExtents() (left, right, top, bottom int, ok bool)
 	var nitems C.ulong
 	var bytesAfter C.ulong
 	var prop *C.uchar
+
+	if c.platform.closed {
+		return 0, 0, 0, 0, false
+	}
 
 	status := C.XGetWindowProperty(
 		display,

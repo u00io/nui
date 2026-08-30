@@ -230,4 +230,8 @@ func Run() {
 	winHeight = win.Height()
 
 	win.EventLoop()
+	winPosX = win.PosX()
+	winPosY = win.PosY()
+	winWidth = win.Width()
+	winHeight = win.Height()
 }
