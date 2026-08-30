@@ -41,6 +41,8 @@ type nativeWindowPlatform struct {
 	window  C.Window
 	screen  C.int
 
+	closed bool
+
 	lastMouseDownX      int
 	lastMouseDownY      int
 	lastMouseDownButton nuimouse.MouseButton
@@ -249,10 +251,14 @@ func (c *nativeWindow) EventLoop() {
 
 	dtLastPaint := time.Now()
 
-	for {
-		for C.XPending(c.platform.display) > 0 {
+	for !c.platform.closed {
+		for !c.platform.closed && C.XPending(c.platform.display) > 0 {
 			var event C.XEvent
 			C.XNextEvent(c.platform.display, &event)
+
+			if c.platform.closed {
+				break
+			}
 
 			{
 				_, _, _, _, ok := c.getFrameExtents()
@@ -364,6 +370,10 @@ func (c *nativeWindow) EventLoop() {
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
 				if c.onKeyDown != nil {
 					c.onKeyDown(key, c.getModifierState())
+				}
+
+				if c.platform.closed {
+					break
 				}
 
 				var buf [32]C.char
@@ -541,20 +551,22 @@ func (c *nativeWindow) EventLoop() {
 
 		}
 
-		select {
-		case <-ticker.C:
-			{
-				//fmt.Println("Timer event: 10ms tick")
-				if c.platform.needUpdateInTimer {
-					c.Update()
-					c.platform.needUpdateInTimer = false
+		if !c.platform.closed {
+			select {
+			case <-ticker.C:
+				{
+					//fmt.Println("Timer event: 10ms tick")
+					if c.platform.needUpdateInTimer {
+						c.Update()
+						c.platform.needUpdateInTimer = false
+					}
+					if c.onTimer != nil {
+						c.onTimer()
+						c.Update()
+					}
 				}
-				if c.onTimer != nil {
-					c.onTimer()
-					c.Update()
-				}
+			default:
 			}
-		default:
 		}
 	}
 }
@@ -562,6 +574,7 @@ func (c *nativeWindow) EventLoop() {
 func (c *nativeWindow) Close() {
 	C.XDestroyWindow(c.platform.display, c.platform.window)
 	C.XCloseDisplay(c.platform.display)
+	c.platform.closed = true
 }
 
 func (c *nativeWindow) SetTitle(title string) {
