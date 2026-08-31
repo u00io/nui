@@ -368,8 +368,13 @@ func (c *nativeWindow) EventLoop() {
 				keySym := C.XLookupKeysym((*C.XKeyEvent)(unsafe.Pointer(&event)), 0)
 				fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
+				processed := false
 				if c.onKeyDown != nil {
-					c.onKeyDown(key, c.getModifierState())
+					processed = c.onKeyDown(key, c.getModifierState())
+				}
+
+				if processed {
+					break
 				}
 
 				if c.platform.closed {

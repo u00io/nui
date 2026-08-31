@@ -189,7 +189,7 @@ func Run() {
 		log("Char: " + string(char))
 	})
 
-	wnd.OnKeyDown(func(key nuikey.Key, mods nuikey.KeyModifiers) {
+	wnd.OnKeyDown(func(key nuikey.Key, mods nuikey.KeyModifiers) bool {
 		//log("Key down: " + key.String() + " " + mods.String())
 
 		if key == nuikey.Key1 {
@@ -207,6 +207,7 @@ func Run() {
 		if key == nuikey.Key5 {
 			wnd.SetMouseCursor(nuimouse.MouseCursorResizeVer)
 		}
+		return true
 	})
 
 	wnd.OnKeyUp(func(key nuikey.Key, mods nuikey.KeyModifiers) {

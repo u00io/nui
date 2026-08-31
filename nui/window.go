@@ -19,7 +19,7 @@ type Window interface {
 	SystemHandle() any
 
 	// Keyboard events
-	OnKeyDown(func(keyCode nuikey.Key, mods nuikey.KeyModifiers))
+	OnKeyDown(func(keyCode nuikey.Key, mods nuikey.KeyModifiers) bool)
 	OnKeyUp(func(keyCode nuikey.Key, mods nuikey.KeyModifiers))
 	OnChar(func(char rune))
 

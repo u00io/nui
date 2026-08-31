@@ -40,7 +40,7 @@ func Run() {
 	var animationOffset = 0
 	var timerPeriodMs = 0
 
-	win.OnKeyDown(func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers) {
+	win.OnKeyDown(func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers) bool {
 		modStr := modifiers.String()
 		if len(modStr) > 0 {
 			modStr = " + " + modStr
@@ -93,6 +93,7 @@ func Run() {
 			allowCloseWindow = false
 		}
 		win.Update()
+		return false
 	})
 
 	dtLastTimer := time.Now()

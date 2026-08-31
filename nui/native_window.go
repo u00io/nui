@@ -36,7 +36,7 @@ type nativeWindow struct {
 
 	timerLastDT time.Time
 
-	onKeyDown func(keyCode nuikey.Key, mods nuikey.KeyModifiers)
+	onKeyDown func(keyCode nuikey.Key, mods nuikey.KeyModifiers) bool
 	onKeyUp   func(keyCode nuikey.Key, mods nuikey.KeyModifiers)
 	onChar    func(char rune)
 
@@ -58,7 +58,7 @@ type nativeWindow struct {
 	onTimer        func()
 }
 
-func (c *nativeWindow) OnKeyDown(f func(keyCode nuikey.Key, mods nuikey.KeyModifiers)) {
+func (c *nativeWindow) OnKeyDown(f func(keyCode nuikey.Key, mods nuikey.KeyModifiers) bool) {
 	c.onKeyDown = f
 }
 
