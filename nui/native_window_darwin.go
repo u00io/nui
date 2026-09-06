@@ -129,6 +129,11 @@ func (c *nativeWindow) Close() {
 	C.CloseWindowById(C.int(c.hwnd))
 }
 
+// ShowModal is not implemented on Darwin yet; it just behaves like Exec, on its own goroutine.
+func (c *nativeWindow) ShowModal(parent Window) {
+	go c.Exec()
+}
+
 ///////////////////////////////////////////////////
 // Window appearance
 

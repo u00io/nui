@@ -143,6 +143,11 @@ func (c *nativeWindow) Close() {
 	procPostMessageW.Call(uintptr(c.hwnd), c_WM_DESTROY, 0, 0)
 }
 
+// ShowModal is not implemented on Windows yet; it just behaves like Exec, on its own goroutine.
+func (c *nativeWindow) ShowModal(parent Window) {
+	go c.Exec()
+}
+
 ///////////////////////////////////////////////////
 // Window appearance
 

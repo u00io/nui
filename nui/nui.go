@@ -11,7 +11,3 @@ func init() {
 	// is always run on the same thread
 	runtime.LockOSThread()
 }
-
-const (
-	defaultWindowTitle = "NUI Window"
-)

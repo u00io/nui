@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"sync"
 	"time"
 	"unicode/utf8"
 	"unsafe"
@@ -32,6 +33,8 @@ import "C"
 
 func init() {
 	C.setlocale(C.LC_ALL, C.CString(""))
+	// Required before any Xlib call once multiple windows run their event loops on separate goroutines.
+	C.XInitThreads()
 }
 
 type windowId C.Window
@@ -60,6 +63,10 @@ type nativeWindowPlatform struct {
 	netWMState              C.Atom
 	netWMStateMaximizedHorz C.Atom
 	netWMStateMaximizedVert C.Atom
+
+	// Per-window paint surface, sized to the window's current dimensions.
+	canvasBuffer []byte
+	bgColor      color.RGBA
 }
 
 type rect struct {
@@ -83,12 +90,15 @@ func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 }
 
 var hwnds map[windowId]*nativeWindow
+var hwndsMu sync.Mutex
 
 func init() {
 	hwnds = make(map[windowId]*nativeWindow)
 }
 
 func GetNativeWindowByHandle(hwnd C.Window) *nativeWindow {
+	hwndsMu.Lock()
+	defer hwndsMu.Unlock()
 	if w, ok := hwnds[windowId(hwnd)]; ok {
 		return w
 	}
@@ -100,27 +110,28 @@ func getHDCSize(hdc uintptr) (width int32, height int32) {
 	return r.right - r.left, r.bottom - r.top
 }
 
-const chunkHeight = 100
-const maxWidth = 10000
-
-var pixBuffer = make([]byte, 4*chunkHeight*maxWidth)
-
+// Sanity caps on a single window's paintable area, not a shared buffer size.
 const maxCanvasWidth = 10000
 const maxCanvasHeight = 5000
 
-var canvasBuffer = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
-var canvasBufferBackground = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
+// ensureCanvasBuffer grows this window's own paint buffer to fit size bytes, if needed.
+func (c *nativeWindow) ensureCanvasBuffer(size int) []byte {
+	if cap(c.platform.canvasBuffer) < size {
+		c.platform.canvasBuffer = make([]byte, size)
+	} else {
+		c.platform.canvasBuffer = c.platform.canvasBuffer[:size]
+	}
+	return c.platform.canvasBuffer
+}
 
-func initCanvasBufferBackground(col color.Color) {
-	for y := 0; y < maxCanvasHeight; y++ {
-		for x := 0; x < maxCanvasWidth; x++ {
-			i := (y*maxCanvasWidth + x) * 4
-			r, g, b, a := col.RGBA()
-			canvasBufferBackground[i+0] = byte(b)
-			canvasBufferBackground[i+1] = byte(g)
-			canvasBufferBackground[i+2] = byte(r)
-			canvasBufferBackground[i+3] = byte(a)
-		}
+// fillCanvasBuffer paints buf with this window's solid background color.
+func fillCanvasBuffer(buf []byte, col color.RGBA) {
+	r, g, b, a := col.B, col.G, col.R, col.A
+	for i := 0; i+3 < len(buf); i += 4 {
+		buf[i+0] = r
+		buf[i+1] = g
+		buf[i+2] = b
+		buf[i+3] = a
 	}
 }
 
@@ -129,7 +140,7 @@ func initCanvasBufferBackground(col color.Color) {
 func createWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) *nativeWindow {
 	var c nativeWindow
 	c.showMaximized = maximized
-	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
+	c.platform.bgColor = color.RGBA{0, 50, 0, 255}
 	c.platform.prevSetPosX = -1
 	c.platform.prevSetPosY = -1
 
@@ -168,7 +179,9 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.windowWidth, c.windowHeight = int(getAttr.width), int(getAttr.height)
 
 	// Store the window handle
+	hwndsMu.Lock()
 	hwnds[windowId(c.platform.window)] = &c
+	hwndsMu.Unlock()
 
 	// Set default icon
 	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
@@ -287,15 +300,15 @@ func (c *nativeWindow) EventLoop() {
 							hdcHeight = maxCanvasHeight
 						}
 
+						canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
+						buf := c.ensureCanvasBuffer(canvasDataBufferSize)
+						fillCanvasBuffer(buf, c.platform.bgColor)
+
 						img := &image.RGBA{
-							Pix:    canvasBuffer,
+							Pix:    buf,
 							Stride: int(hdcWidth) * 4,
 							Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
 						}
-
-						// Clear the canvas
-						canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
-						copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
 
 						if c.onPaint != nil {
 							c.onPaint(img)
@@ -546,11 +559,9 @@ func (c *nativeWindow) EventLoop() {
 					}
 
 					if allowClose {
-						C.XDestroyWindow(
-							(*C.Display)(c.platform.display),
-							C.Window(c.platform.window),
-						)
-						c.platform.closed = true
+						// Close (not a bare XDestroyWindow) so the request is
+						// actually flushed before this event loop stops pumping.
+						c.Close()
 					}
 				}
 			}
@@ -581,6 +592,10 @@ func (c *nativeWindow) Close() {
 	C.XDestroyWindow(c.platform.display, c.platform.window)
 	C.XCloseDisplay(c.platform.display)
 	c.platform.closed = true
+
+	hwndsMu.Lock()
+	delete(hwnds, windowId(c.platform.window))
+	hwndsMu.Unlock()
 }
 
 func (c *nativeWindow) SetTitle(title string) {
@@ -725,7 +740,7 @@ func (c *nativeWindow) DrawTimeUs() int64 {
 }
 
 func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {
-	initCanvasBufferBackground(color)
+	c.platform.bgColor = color
 	c.Update()
 }
 
@@ -780,6 +795,16 @@ func (c *nativeWindow) MaximizeWindow() {
 	C.maximizeWindow(c.platform.display, c.platform.window)
 }
 
+// ShowModal marks the window as a modal dialog owned by parent (WM_TRANSIENT_FOR +
+// _NET_WM_STATE_MODAL) and shows it. Runs its own event loop on a new goroutine so
+// parent's event loop/timer keep running; the WM still blocks input to parent.
+func (c *nativeWindow) ShowModal(parent Window) {
+	if p, ok := parent.(*nativeWindow); ok && p != nil {
+		C.setWindowModal(c.platform.display, c.platform.window, p.platform.window)
+	}
+	go c.Exec()
+}
+
 func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 	width := icon.Bounds().Dx()
 	height := icon.Bounds().Dy()
@@ -827,14 +852,16 @@ func (c *nativeWindow) drawImageRGBA(display *C.Display, window C.Window, img im
 
 	dataSize := width * height * 4
 
+	rgba := img.(*image.RGBA).Pix
+
 	// RGBA->BGRA
 	pixelsCount := width * height
 	for i := 0; i < pixelsCount; i++ {
-		canvasBuffer[i*4], canvasBuffer[i*4+2] = canvasBuffer[i*4+2], canvasBuffer[i*4]
+		rgba[i*4], rgba[i*4+2] = rgba[i*4+2], rgba[i*4]
 	}
 
 	cBuffer := C.malloc(C.size_t(dataSize))
-	C.memcpy(cBuffer, unsafe.Pointer(&canvasBuffer[0]), C.size_t(dataSize))
+	C.memcpy(cBuffer, unsafe.Pointer(&rgba[0]), C.size_t(dataSize))
 
 	ximage := C.XCreateImage(
 		display,

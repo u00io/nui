@@ -16,6 +16,12 @@ type Window interface {
 	EventLoop()
 	Close()
 
+	// ShowModal sets platform hints marking this window as a modal dialog
+	// owned by parent, then shows it. The window manager blocks mouse/keyboard
+	// input to parent while it's open, but parent's own event loop (repaint,
+	// timers) keeps running: ShowModal returns immediately, it does not block.
+	ShowModal(parent Window)
+
 	SystemHandle() any
 
 	// Keyboard events

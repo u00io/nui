@@ -29,6 +29,30 @@ func log(s string) {
 	}
 }
 
+// showLabelWindow opens a small window with the given label, either as a
+// modal dialog owned by parent (WM blocks input to parent) or as an
+// independent non-modal window — both run concurrently with parent.
+func showLabelWindow(text string, modal bool, parent nui.Window) {
+	w := nui.CreateWindow(text, 0, 0, 320, 160, true, false)
+	w.OnPaint(func(rgba *image.RGBA) {
+		cnv := nuicanvas.NewCanvas(rgba)
+		cnv.SetColor(color.RGBA{0, 255, 0, 255})
+		cnv.DrawFixedString(10, 10, text, 2)
+		cnv.DrawFixedString(10, 30, "Press Esc to close", 2)
+	})
+	w.OnKeyDown(func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers) bool {
+		if keyCode == nuikey.KeyEsc {
+			w.Close()
+		}
+		return true
+	})
+	if modal {
+		w.ShowModal(parent)
+	} else {
+		go w.Exec()
+	}
+}
+
 func Run() {
 	win := nui.CreateWindow("App", 10, 10, 800, 600, false, false)
 
@@ -91,6 +115,10 @@ func Run() {
 			win.SetBackgroundColor(color.RGBA{255, 255, 255, 255})
 		case nuikey.Key6:
 			allowCloseWindow = false
+		case nuikey.KeyM:
+			showLabelWindow("Modal window", true, win)
+		case nuikey.KeyN:
+			showLabelWindow("Non-modal window", false, win)
 		}
 		win.Update()
 		return false
@@ -196,22 +224,24 @@ func Run() {
 		cnv.DrawFixedString(10, 170, "Press F9 to set pointer cursor", 2)
 		cnv.DrawFixedString(10, 190, "Press F10 to set IBeam cursor", 2)
 		cnv.DrawFixedString(10, 210, "Press F12 to close window", 2)
+		cnv.DrawFixedString(10, 230, "Press M to open a modal window", 2)
+		cnv.DrawFixedString(10, 250, "Press N to open a non-modal window", 2)
 
-		cnv.DrawFixedString(10, 230, "Timer: "+fmt.Sprint(timerCounter), 2)
-		cnv.DrawFixedString(10, 250, "MouseX: "+fmt.Sprint(mousePosX), 2)
-		cnv.DrawFixedString(10, 270, "MouseY: "+fmt.Sprint(mousePosY), 2)
-		cnv.DrawFixedString(10, 290, "WinX: "+fmt.Sprint(winPosX), 2)
-		cnv.DrawFixedString(10, 310, "WinY: "+fmt.Sprint(winPosY), 2)
-		cnv.DrawFixedString(10, 330, "WinW: "+fmt.Sprint(winWidth), 2)
-		cnv.DrawFixedString(10, 350, "WinH: "+fmt.Sprint(winHeight), 2)
-		cnv.DrawFixedString(10, 370, "MouseWheelX: "+fmt.Sprint(mouseWheelX), 2)
-		cnv.DrawFixedString(10, 390, "MouseWheelY: "+fmt.Sprint(mouseWheelY), 2)
-		cnv.DrawFixedString(10, 410, "DrawTimeMs: "+fmt.Sprint(win.DrawTimeUs()/1000), 2)
-		cnv.DrawFixedString(10, 430, "TimerPeriodMs: "+fmt.Sprint(timerPeriodMs), 2)
+		cnv.DrawFixedString(10, 270, "Timer: "+fmt.Sprint(timerCounter), 2)
+		cnv.DrawFixedString(10, 290, "MouseX: "+fmt.Sprint(mousePosX), 2)
+		cnv.DrawFixedString(10, 310, "MouseY: "+fmt.Sprint(mousePosY), 2)
+		cnv.DrawFixedString(10, 330, "WinX: "+fmt.Sprint(winPosX), 2)
+		cnv.DrawFixedString(10, 350, "WinY: "+fmt.Sprint(winPosY), 2)
+		cnv.DrawFixedString(10, 370, "WinW: "+fmt.Sprint(winWidth), 2)
+		cnv.DrawFixedString(10, 390, "WinH: "+fmt.Sprint(winHeight), 2)
+		cnv.DrawFixedString(10, 410, "MouseWheelX: "+fmt.Sprint(mouseWheelX), 2)
+		cnv.DrawFixedString(10, 430, "MouseWheelY: "+fmt.Sprint(mouseWheelY), 2)
+		cnv.DrawFixedString(10, 450, "DrawTimeMs: "+fmt.Sprint(win.DrawTimeUs()/1000), 2)
+		cnv.DrawFixedString(10, 470, "TimerPeriodMs: "+fmt.Sprint(timerPeriodMs), 2)
 
-		cnv.DrawLine(5, 450, win.Width()-5, 450, 0.5)
-		cnv.DrawLine(390, 5, 390, 425, 0.5)
-		cnv.FillRect(animationOffset, 440, 20, 20, 0.5)
+		cnv.DrawLine(5, 490, win.Width()-5, 490, 0.5)
+		cnv.DrawLine(390, 5, 390, 465, 0.5)
+		cnv.FillRect(animationOffset, 480, 20, 20, 0.5)
 
 		cnv.DrawFixedString(400, 10, "Press Esc to clear log", 2)
 		for i, s := range logItems {

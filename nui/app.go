@@ -3,6 +3,7 @@ package nui
 import (
 	"image"
 	"image/color"
+	"sync"
 
 	"github.com/u00io/nui/nuicanvas"
 )
@@ -54,4 +55,20 @@ func CreateWindow(title string, posX int, posY int, width int, height int, cente
 func CreateDefaultWindow() Window {
 	w := CreateWindow("App", 100, 100, 800, 600, true, false)
 	return w
+}
+
+// Run shows and runs each window's event loop concurrently, one goroutine per
+// window, and blocks until all of them have been closed. Additional windows
+// created later (e.g. from a callback) can still be launched manually with
+// `go win.Exec()` — Run is just a convenience for the common case.
+func Run(windows ...Window) {
+	var wg sync.WaitGroup
+	for _, w := range windows {
+		wg.Add(1)
+		go func(w Window) {
+			defer wg.Done()
+			w.Exec()
+		}(w)
+	}
+	wg.Wait()
 }
