@@ -11,6 +11,7 @@ import (
 	"image/color"
 	"image/png"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 	"unsafe"
@@ -45,6 +46,10 @@ type nativeWindowPlatform struct {
 	screen  C.int
 
 	closed bool
+	// Set by Close() from any goroutine; only the owning EventLoop goroutine
+	// acts on it and actually tears down the Display, avoiding a use-after-free
+	// if Close() is called from another window's goroutine.
+	closeRequested int32
 
 	lastMouseDownX      int
 	lastMouseDownY      int
@@ -265,6 +270,11 @@ func (c *nativeWindow) EventLoop() {
 	dtLastPaint := time.Now()
 
 	for !c.platform.closed {
+		if atomic.LoadInt32(&c.platform.closeRequested) != 0 {
+			c.doClose()
+			break
+		}
+
 		for !c.platform.closed && C.XPending(c.platform.display) > 0 {
 			var event C.XEvent
 			C.XNextEvent(c.platform.display, &event)
@@ -588,7 +598,18 @@ func (c *nativeWindow) EventLoop() {
 	}
 }
 
+// Close requests the window to close and is safe to call from any goroutine
+// (e.g. a parent window closing a dialog it owns). The actual XDestroyWindow/
+// XCloseDisplay teardown always runs on the window's own EventLoop goroutine
+// (see doClose), since closing the Display while that goroutine might still
+// be mid-call on it (XPending/XNextEvent) would be a use-after-free.
 func (c *nativeWindow) Close() {
+	atomic.StoreInt32(&c.platform.closeRequested, 1)
+}
+
+// doClose performs the actual Xlib teardown. Must only be called from the
+// window's own EventLoop goroutine.
+func (c *nativeWindow) doClose() {
 	C.XDestroyWindow(c.platform.display, c.platform.window)
 	C.XCloseDisplay(c.platform.display)
 	c.platform.closed = true
