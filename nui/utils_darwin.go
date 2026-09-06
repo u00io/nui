@@ -171,17 +171,14 @@ func go_on_mouse_double_click(hwnd C.int, button, x, y C.int) {
 	}
 }
 
-var dtLastTimer = time.Now()
-
 //export go_on_timer
 func go_on_timer(hwnd C.int) {
 	if win, ok := hwnds[windowId(hwnd)]; ok {
 		dtNow := time.Now()
-		dtDiff := dtNow.Sub(dtLastTimer)
-		if dtDiff < time.Millisecond*50 {
+		if dtNow.Sub(win.platform.lastTimerTick) < time.Millisecond*50 {
 			return
 		}
-		dtLastTimer = dtNow
+		win.platform.lastTimerTick = dtNow
 		if win.onTimer != nil {
 			win.onTimer()
 		}
@@ -199,17 +196,23 @@ const maxCanvasWidth = 10000
 const maxCanvasHeight = 5000
 
 var canvasBufferBackground = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
+var canvasBufferBackgroundColor color.Color
 
+// Filling the 200MB background buffer is expensive; every createWindow() call used to redo it
+// with the same default color and stall the main thread. Skip it when the color didn't change.
 func initCanvasBufferBackground(col color.Color) {
-	for y := 0; y < maxCanvasHeight; y++ {
-		for x := 0; x < maxCanvasWidth; x++ {
-			i := (y*maxCanvasWidth + x) * 4
-			r, g, b, a := col.RGBA()
-			canvasBufferBackground[i+0] = byte(b)
-			canvasBufferBackground[i+1] = byte(g)
-			canvasBufferBackground[i+2] = byte(r)
-			canvasBufferBackground[i+3] = byte(a)
-		}
+	if canvasBufferBackgroundColor == col {
+		return
+	}
+	canvasBufferBackgroundColor = col
+
+	r, g, b, a := col.RGBA()
+	rb, gb, bb, ab := byte(b), byte(g), byte(r), byte(a)
+	for i := 0; i < len(canvasBufferBackground); i += 4 {
+		canvasBufferBackground[i+0] = rb
+		canvasBufferBackground[i+1] = gb
+		canvasBufferBackground[i+2] = bb
+		canvasBufferBackground[i+3] = ab
 	}
 }
 

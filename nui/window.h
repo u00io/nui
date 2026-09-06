@@ -4,6 +4,7 @@
 
 int InitWindow(void);
 void ShowWindow(int windowId);
+void ShowModalWindow(int windowId, int parentWindowId);
 void RunEventLoop(void);
 
 void CloseWindowById(int windowId);

@@ -11,11 +11,17 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/u00io/nui/nuikey"
 	"github.com/u00io/nui/nuimouse"
 )
+
+// Cocoa has one shared NSApplication run loop for the whole process; only the
+// first window to reach EventLoop() may start it.
+var eventLoopStarted int32
 
 // Darwin/Cocoa implementation; window chrome and bridges live in window.m.
 
@@ -25,6 +31,9 @@ type nativeWindowPlatform struct {
 	lastNumLockState  bool
 
 	keyModifiers nuikey.KeyModifiers
+
+	// Throttles go_on_timer per window; must not be shared across windows.
+	lastTimerTick time.Time
 }
 
 /*type NativeWindow struct {
@@ -122,16 +131,25 @@ func (c *nativeWindow) Update() {
 }
 
 func (c *nativeWindow) EventLoop() {
-	C.RunEventLoop()
+	if atomic.CompareAndSwapInt32(&eventLoopStarted, 0, 1) {
+		C.RunEventLoop()
+	}
+	// else: the shared run loop is already active elsewhere and services this window too.
 }
 
 func (c *nativeWindow) Close() {
 	C.CloseWindowById(C.int(c.hwnd))
 }
 
-// ShowModal is not implemented on Darwin yet; it just behaves like Exec, on its own goroutine.
+// ShowModal shows the window as an app-modal dialog. Unlike Linux/Windows this call
+// blocks until the dialog closes (required for reliable modal-on-modal nesting on
+// Cocoa); parent's timers/repaint keep running since they share the same run loop.
 func (c *nativeWindow) ShowModal(parent Window) {
-	go c.Exec()
+	parentID := C.int(-1)
+	if p, ok := parent.(*nativeWindow); ok && p != nil {
+		parentID = C.int(p.hwnd)
+	}
+	C.ShowModalWindow(C.int(c.hwnd), parentID)
 }
 
 ///////////////////////////////////////////////////

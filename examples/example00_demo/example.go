@@ -31,7 +31,9 @@ func log(s string) {
 
 // showLabelWindow opens a small window with the given label, either as a
 // modal dialog owned by parent (WM blocks input to parent) or as an
-// independent non-modal window — both run concurrently with parent.
+// independent non-modal window — both run concurrently with parent. Pressing
+// M inside the opened window opens a further modal dialog owned by *it*,
+// testing a modal stacked on top of a non-modal (or another modal) window.
 func showLabelWindow(text string, modal bool, parent nui.Window) {
 	w := nui.CreateWindow(text, 0, 0, 320, 160, true, false)
 	w.OnPaint(func(rgba *image.RGBA) {
@@ -39,10 +41,14 @@ func showLabelWindow(text string, modal bool, parent nui.Window) {
 		cnv.SetColor(color.RGBA{0, 255, 0, 255})
 		cnv.DrawFixedString(10, 10, text, 2)
 		cnv.DrawFixedString(10, 30, "Press Esc to close", 2)
+		cnv.DrawFixedString(10, 50, "Press M for a nested modal dialog", 2)
 	})
 	w.OnKeyDown(func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers) bool {
-		if keyCode == nuikey.KeyEsc {
+		switch keyCode {
+		case nuikey.KeyEsc:
 			w.Close()
+		case nuikey.KeyM:
+			showLabelWindow("Nested modal dialog", true, w)
 		}
 		return true
 	})
@@ -225,7 +231,7 @@ func Run() {
 		cnv.DrawFixedString(10, 190, "Press F10 to set IBeam cursor", 2)
 		cnv.DrawFixedString(10, 210, "Press F12 to close window", 2)
 		cnv.DrawFixedString(10, 230, "Press M to open a modal window", 2)
-		cnv.DrawFixedString(10, 250, "Press N to open a non-modal window", 2)
+		cnv.DrawFixedString(10, 250, "Press N to open a non-modal window (then M inside it for a nested modal)", 2)
 
 		cnv.DrawFixedString(10, 270, "Timer: "+fmt.Sprint(timerCounter), 2)
 		cnv.DrawFixedString(10, 290, "MouseX: "+fmt.Sprint(mousePosX), 2)

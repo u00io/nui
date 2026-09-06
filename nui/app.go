@@ -61,14 +61,24 @@ func CreateDefaultWindow() Window {
 // window, and blocks until all of them have been closed. Additional windows
 // created later (e.g. from a callback) can still be launched manually with
 // `go win.Exec()` — Run is just a convenience for the common case.
+//
+// The first window's Exec() runs on the calling goroutine rather than a
+// spawned one: on Cocoa the real event loop must start on the process's
+// original thread, so callers must never wrap their first Exec()/Run() call
+// in `go` themselves.
 func Run(windows ...Window) {
+	if len(windows) == 0 {
+		return
+	}
+
 	var wg sync.WaitGroup
-	for _, w := range windows {
+	for _, w := range windows[1:] {
 		wg.Add(1)
 		go func(w Window) {
 			defer wg.Done()
 			w.Exec()
 		}(w)
 	}
+	windows[0].Exec()
 	wg.Wait()
 }

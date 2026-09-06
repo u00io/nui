@@ -21,6 +21,10 @@ void Log(int code) {
 __attribute__((constructor))
 static void InitWindowMap() {
     windowMap = [NSMutableDictionary new];
+    // Without this, dispatch_async(main queue, ...) never runs while a modal run loop
+    // (runModalForWindow:) is active, so a modal opened from inside another modal would
+    // never actually start its own session, leaving the outer modal window still interactive.
+    CFRunLoopAddCommonMode(CFRunLoopGetMain(), (CFStringRef)NSModalPanelRunLoopMode);
 }
 
 // Top-down Y distance from screen top to window top (inverse of Cocoa frame.origin.y). Matches SetWindowPosition input.
@@ -85,6 +89,12 @@ static NSRect NUI_DrawableRectInContentView(NSWindow *win, NSView *cv) {
 - (void)windowWillClose:(NSNotification *)notification {
     NSWindow *window = notification.object;
     int windowId = (int)[window windowNumber];
+
+    // Ends the nested modal loop started by ShowModalWindow, if this was the modal window.
+    if ([NSApp modalWindow] == window) {
+        [NSApp stopModal];
+    }
+
     StopTimer(windowId);
     go_on_window_will_close(windowId);
     [windowMap removeObjectForKey:@(windowId)];
@@ -437,19 +447,48 @@ void MaximizeWindow(int windowId) {
     }
 }
 
+// Runs directly when already on the main thread (e.g. the first window, shown before
+// RunEventLoop starts - dispatch_sync here would deadlock). A non-modal window's own
+// goroutine calls this from a background thread, where dispatch_sync onto the main
+// queue is safe (the shared run loop is already draining it) and avoids the extra
+// run-loop-tick delay dispatch_async would add.
 void ShowWindow(int windowId) {
+    void (^work)(void) = ^{
+        NSWindow *w = windowMap[@(windowId)];
+        if (!w) return;
+
+        [w makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+
+        // Deferred so layout/tab bar etc. settle; fires one client-size sync to Go.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSWindow *ww = windowMap[@(windowId)];
+            if (!ww) return;
+            NUI_ReportClientSizeToGo(windowId, ww);
+        });
+    };
+
+    if ([NSThread isMainThread]) {
+        work();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), work);
+    }
+}
+
+// App-modal dialog. runModalForWindow: is called synchronously (nesting a modal session
+// directly on the call stack) rather than deferred via dispatch_async: a dispatched call
+// can stall/misorder while an outer modal session is already running, which broke
+// modal-on-modal (the intermediate window stayed key/frontmost and activatable). This
+// makes Go's ShowModal a blocking call on macOS only - it returns once the dialog closes.
+void ShowModalWindow(int windowId, int parentWindowId) {
     NSWindow *w = windowMap[@(windowId)];
     if (!w) return;
 
     [w makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
+    NUI_ReportClientSizeToGo(windowId, w);
 
-    // Deferred so layout/tab bar etc. settle; fires one client-size sync to Go.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSWindow *ww = windowMap[@(windowId)];
-        if (!ww) return;
-        NUI_ReportClientSizeToGo(windowId, ww);
-    });
+    [NSApp runModalForWindow:w];
 }
 
 void SetAppIconFromRGBA(const char* data, int width, int height) {

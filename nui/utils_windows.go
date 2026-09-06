@@ -330,8 +330,15 @@ const maxCanvasHeight = 4000
 
 var canvasBuffer = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
 var canvasBufferBackground = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
+var canvasBufferBackgroundColor color.Color
 
+// Every createWindow() call used to redo this fill with the same default color; skip when unchanged.
 func initCanvasBufferBackground(col color.Color) {
+	if canvasBufferBackgroundColor == col {
+		return
+	}
+	canvasBufferBackgroundColor = col
+
 	dataSize := maxCanvasWidth * maxCanvasHeight * 4
 	r, g, b, a := col.RGBA()
 	for i := 0; i < dataSize; i += 4 {
