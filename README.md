@@ -6,6 +6,8 @@ Native gateway between OS UI & Golang with minimum dependencies.
 - Keyboard input
 - Mouse input
 
+Documentation: [doc/README.md](doc/README.md)
+
 # Operating Systems
 - Linux
 - Windows
