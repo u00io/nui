@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"strings"
 	"time"
 
 	"github.com/u00io/nui/nui"
@@ -125,6 +126,46 @@ func Run() {
 			showLabelWindow("Modal window", true, win)
 		case nuikey.KeyN:
 			showLabelWindow("Non-modal window", false, win)
+		case nuikey.KeyF:
+			files, err := nui.OpenFileDialog(win, nui.OpenFileDialogOptions{
+				Title: "Open file",
+				Filters: []nui.FileDialogFilter{
+					{DisplayName: "All files", Patterns: []string{"*"}},
+				},
+			})
+			if err != nil {
+				log("OpenFileDialog error: " + err.Error())
+			} else if len(files) == 0 {
+				log("OpenFileDialog: cancelled")
+			} else {
+				log("OpenFileDialog: " + strings.Join(files, ", "))
+			}
+		case nuikey.KeyS:
+			path, err := nui.SaveFileDialog(win, nui.SaveFileDialogOptions{
+				Title:           "Save file",
+				DefaultFileName: "untitled.txt",
+				Filters: []nui.FileDialogFilter{
+					{DisplayName: "All files", Patterns: []string{"*"}},
+				},
+			})
+			if err != nil {
+				log("SaveFileDialog error: " + err.Error())
+			} else if path == "" {
+				log("SaveFileDialog: cancelled")
+			} else {
+				log("SaveFileDialog: " + path)
+			}
+		case nuikey.KeyD:
+			dir, err := nui.SelectDirectoryDialog(win, nui.SelectDirectoryDialogOptions{
+				Title: "Select directory",
+			})
+			if err != nil {
+				log("SelectDirectoryDialog error: " + err.Error())
+			} else if dir == "" {
+				log("SelectDirectoryDialog: cancelled")
+			} else {
+				log("SelectDirectoryDialog: " + dir)
+			}
 		}
 		win.Update()
 		return false
@@ -230,24 +271,27 @@ func Run() {
 		cnv.DrawFixedString(10, 170, "Press F9 to set pointer cursor", 2)
 		cnv.DrawFixedString(10, 190, "Press F10 to set IBeam cursor", 2)
 		cnv.DrawFixedString(10, 210, "Press F12 to close window", 2)
-		cnv.DrawFixedString(10, 230, "Press M to open a modal window", 2)
-		cnv.DrawFixedString(10, 250, "Press N to open a non-modal window (then M inside it for a nested modal)", 2)
+		cnv.DrawFixedString(10, 230, "Press M for modal window", 2)
+		cnv.DrawFixedString(10, 250, "Press N for non-modal window", 2)
+		cnv.DrawFixedString(10, 270, "Press F to open file dialog", 2)
+		cnv.DrawFixedString(10, 290, "Press S to open save dialog", 2)
+		cnv.DrawFixedString(10, 310, "Press D to select a directory", 2)
 
-		cnv.DrawFixedString(10, 270, "Timer: "+fmt.Sprint(timerCounter), 2)
-		cnv.DrawFixedString(10, 290, "MouseX: "+fmt.Sprint(mousePosX), 2)
-		cnv.DrawFixedString(10, 310, "MouseY: "+fmt.Sprint(mousePosY), 2)
-		cnv.DrawFixedString(10, 330, "WinX: "+fmt.Sprint(winPosX), 2)
-		cnv.DrawFixedString(10, 350, "WinY: "+fmt.Sprint(winPosY), 2)
-		cnv.DrawFixedString(10, 370, "WinW: "+fmt.Sprint(winWidth), 2)
-		cnv.DrawFixedString(10, 390, "WinH: "+fmt.Sprint(winHeight), 2)
-		cnv.DrawFixedString(10, 410, "MouseWheelX: "+fmt.Sprint(mouseWheelX), 2)
-		cnv.DrawFixedString(10, 430, "MouseWheelY: "+fmt.Sprint(mouseWheelY), 2)
-		cnv.DrawFixedString(10, 450, "DrawTimeMs: "+fmt.Sprint(win.DrawTimeUs()/1000), 2)
-		cnv.DrawFixedString(10, 470, "TimerPeriodMs: "+fmt.Sprint(timerPeriodMs), 2)
+		cnv.DrawFixedString(10, 330, "Timer: "+fmt.Sprint(timerCounter), 2)
+		cnv.DrawFixedString(10, 350, "MouseX: "+fmt.Sprint(mousePosX), 2)
+		cnv.DrawFixedString(10, 370, "MouseY: "+fmt.Sprint(mousePosY), 2)
+		cnv.DrawFixedString(10, 390, "WinX: "+fmt.Sprint(winPosX), 2)
+		cnv.DrawFixedString(10, 410, "WinY: "+fmt.Sprint(winPosY), 2)
+		cnv.DrawFixedString(10, 430, "WinW: "+fmt.Sprint(winWidth), 2)
+		cnv.DrawFixedString(10, 450, "WinH: "+fmt.Sprint(winHeight), 2)
+		cnv.DrawFixedString(10, 470, "MouseWheelX: "+fmt.Sprint(mouseWheelX), 2)
+		cnv.DrawFixedString(10, 490, "MouseWheelY: "+fmt.Sprint(mouseWheelY), 2)
+		cnv.DrawFixedString(10, 510, "DrawTimeMs: "+fmt.Sprint(win.DrawTimeUs()/1000), 2)
+		cnv.DrawFixedString(10, 530, "TimerPeriodMs: "+fmt.Sprint(timerPeriodMs), 2)
 
-		cnv.DrawLine(5, 490, win.Width()-5, 490, 0.5)
-		cnv.DrawLine(390, 5, 390, 465, 0.5)
-		cnv.FillRect(animationOffset, 480, 20, 20, 0.5)
+		cnv.DrawLine(5, 550, win.Width()-5, 550, 0.5)
+		cnv.DrawLine(390, 5, 390, 525, 0.5)
+		cnv.FillRect(animationOffset, 540, 20, 20, 0.5)
 
 		cnv.DrawFixedString(400, 10, "Press Esc to clear log", 2)
 		for i, s := range logItems {

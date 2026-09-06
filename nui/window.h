@@ -32,6 +32,15 @@ int GetClientAreaHeight(int windowId);
 int GetScreenWidth();
 int GetScreenHeight();
 
+// File dialogs. Each returns a malloc'd, UTF-8, NUL-terminated string that the
+// caller must free() - NULL means the user cancelled. ShowOpenFileDialog joins
+// multiple picked paths with '\n'. extensionsCSV is a comma-separated list of
+// bare extensions (no leading '*' or '.', e.g. "txt,md"); NULL or "" allows
+// any file. parentWindowId may be -1 for no owner.
+char* ShowOpenFileDialog(int parentWindowId, const char* title, const char* defaultDirectory, const char* extensionsCSV, int allowMultiple);
+char* ShowSaveFileDialog(int parentWindowId, const char* title, const char* defaultDirectory, const char* defaultFileName, const char* extensionsCSV);
+char* ShowSelectDirectoryDialog(int parentWindowId, const char* title, const char* defaultDirectory);
+
 void go_on_paint(int hwnd, void* buffer, int width, int height);
 void go_on_key_down(int hwnd, int keycode);
 void go_on_key_up(int hwnd, int keycode);

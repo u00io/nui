@@ -9,6 +9,8 @@
 #import <mach/mach_time.h>
 #import "window.h"
 #include <pthread.h>
+#include <stdlib.h>
+#include <string.h>
 
 // static NSWindow* window;
 
@@ -636,4 +638,128 @@ void SetMacCursor(int cursorType) {
             [[NSCursor arrowCursor] set];
             break;
     }
+}
+
+///////////////////////////////////////////////////
+// File dialogs
+
+// Runs work() on the main thread, synchronously either way: directly if
+// already there (the common case - called from a Go callback that Cocoa
+// itself invoked on main), else via dispatch_sync so a caller on another
+// goroutine/OS thread still blocks until the dialog closes.
+static void NUI_RunOnMainSync(void (^work)(void)) {
+    if ([NSThread isMainThread]) {
+        work();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), work);
+    }
+}
+
+static NSArray<NSString*>* NUI_ParseExtensionsCSV(const char* extensionsCSV) {
+    if (!extensionsCSV || extensionsCSV[0] == '\0') return nil;
+    NSString *csv = [NSString stringWithUTF8String:extensionsCSV];
+    return [csv componentsSeparatedByString:@","];
+}
+
+static void NUI_ApplyPanelCommonOptions(NSSavePanel *panel, int parentWindowId, const char* title, const char* defaultDirectory) {
+    if (title && title[0]) {
+        panel.title = [NSString stringWithUTF8String:title];
+    }
+    if (defaultDirectory && defaultDirectory[0]) {
+        panel.directoryURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:defaultDirectory]];
+    }
+
+    // runModal is app-modal (not attached to a specific window), but bring the
+    // logical owner frontmost first so the panel doesn't appear behind it.
+    if (parentWindowId >= 0) {
+        NSWindow *owner = windowMap[@(parentWindowId)];
+        if (owner) {
+            [owner makeKeyAndOrderFront:nil];
+        }
+    }
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+char* ShowOpenFileDialog(int parentWindowId, const char* title, const char* defaultDirectory, const char* extensionsCSV, int allowMultiple) {
+    __block char* result = NULL;
+
+    NUI_RunOnMainSync(^{
+        @autoreleasepool {
+            NSOpenPanel *panel = [NSOpenPanel openPanel];
+            panel.canChooseFiles = YES;
+            panel.canChooseDirectories = NO;
+            panel.allowsMultipleSelection = allowMultiple != 0;
+            NUI_ApplyPanelCommonOptions(panel, parentWindowId, title, defaultDirectory);
+
+            NSArray<NSString*> *exts = NUI_ParseExtensionsCSV(extensionsCSV);
+            if (exts) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                panel.allowedFileTypes = exts;
+#pragma clang diagnostic pop
+            }
+
+            if ([panel runModal] == NSModalResponseOK) {
+                NSMutableArray<NSString*> *paths = [NSMutableArray array];
+                for (NSURL *url in panel.URLs) {
+                    [paths addObject:url.path];
+                }
+                NSString *joined = [paths componentsJoinedByString:@"\n"];
+                result = strdup([joined UTF8String]);
+            }
+        }
+    });
+
+    return result;
+}
+
+char* ShowSaveFileDialog(int parentWindowId, const char* title, const char* defaultDirectory, const char* defaultFileName, const char* extensionsCSV) {
+    __block char* result = NULL;
+
+    NUI_RunOnMainSync(^{
+        @autoreleasepool {
+            NSSavePanel *panel = [NSSavePanel savePanel];
+            panel.canCreateDirectories = YES;
+            NUI_ApplyPanelCommonOptions(panel, parentWindowId, title, defaultDirectory);
+
+            if (defaultFileName && defaultFileName[0]) {
+                panel.nameFieldStringValue = [NSString stringWithUTF8String:defaultFileName];
+            }
+
+            NSArray<NSString*> *exts = NUI_ParseExtensionsCSV(extensionsCSV);
+            if (exts) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                panel.allowedFileTypes = exts;
+#pragma clang diagnostic pop
+            }
+
+            if ([panel runModal] == NSModalResponseOK) {
+                result = strdup([panel.URL.path UTF8String]);
+            }
+        }
+    });
+
+    return result;
+}
+
+char* ShowSelectDirectoryDialog(int parentWindowId, const char* title, const char* defaultDirectory) {
+    __block char* result = NULL;
+
+    NUI_RunOnMainSync(^{
+        @autoreleasepool {
+            NSOpenPanel *panel = [NSOpenPanel openPanel];
+            panel.canChooseFiles = NO;
+            panel.canChooseDirectories = YES;
+            panel.canCreateDirectories = YES;
+            panel.allowsMultipleSelection = NO;
+            NUI_ApplyPanelCommonOptions(panel, parentWindowId, title, defaultDirectory);
+
+            if ([panel runModal] == NSModalResponseOK) {
+                result = strdup([panel.URL.path UTF8String]);
+            }
+        }
+    });
+
+    return result;
 }

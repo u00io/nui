@@ -61,6 +61,10 @@ var (
 	procIsZoomed    = user32.NewProc("IsZoomed")
 	procGetKeyState = user32.NewProc("GetKeyState")
 
+	procEnableWindow        = user32.NewProc("EnableWindow")
+	procSetWindowLongPtrW   = user32.NewProc("SetWindowLongPtrW")
+	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+
 	modDwmapi                 = syscall.NewLazyDLL("dwmapi.dll")
 	procDwmSetWindowAttribute = modDwmapi.NewProc("DwmSetWindowAttribute")
 )
@@ -249,6 +253,8 @@ func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 }
 
 func getNativeWindowByHandle(hwnd windowId) *nativeWindow {
+	appWindowsMu.Lock()
+	defer appWindowsMu.Unlock()
 	if w, ok := app.windows[hwnd]; ok {
 		return w
 	}
@@ -402,6 +408,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case c_WM_DESTROY:
 		procKillTimer.Call(uintptr(hwnd), timerID1ms)
+		appWindowsMu.Lock()
+		delete(app.windows, windowId(hwnd))
+		appWindowsMu.Unlock()
 		procPostQuitMessage.Call(0)
 		return 0
 

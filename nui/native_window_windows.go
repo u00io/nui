@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math/rand"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -14,6 +15,11 @@ import (
 )
 
 type windowId syscall.Handle
+
+// Guards app.windows: multiple windows each run their own goroutine/OS
+// thread and message loop (see EventLoop), so creating one window while
+// another's wndProc looks up its handle is a real concurrent map access.
+var appWindowsMu sync.Mutex
 
 type nativeWindowPlatform struct {
 }
@@ -81,7 +87,9 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	// Store the window handle
 	c.hwnd = windowId(syscall.Handle(hwnd))
+	appWindowsMu.Lock()
 	app.windows[c.hwnd] = &c
+	appWindowsMu.Unlock()
 
 	// Set default icon
 	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
@@ -143,9 +151,43 @@ func (c *nativeWindow) Close() {
 	procPostMessageW.Call(uintptr(c.hwnd), c_WM_DESTROY, 0, 0)
 }
 
-// ShowModal is not implemented on Windows yet; it just behaves like Exec, on its own goroutine.
+// ShowModal marks this window as owned by parent (GWLP_HWNDPARENT, so it
+// stacks above parent, minimizes with it, and gets no separate taskbar
+// button) and disables parent's HWND for the duration, the classic Win32
+// technique dialogs use internally. It runs on its own goroutine/thread like
+// a non-modal window, so parent's own event loop (repaint, timers) keeps
+// running - matching the Linux contract documented on Window.ShowModal.
 func (c *nativeWindow) ShowModal(parent Window) {
-	go c.Exec()
+	var hwndOwner uintptr
+	if p, ok := parent.(*nativeWindow); ok && p != nil {
+		hwndOwner = uintptr(p.hwnd)
+	}
+
+	if hwndOwner != 0 {
+		procSetWindowLongPtrW.Call(uintptr(c.hwnd), gwlHwndParentIndex(), hwndOwner)
+		procEnableWindow.Call(hwndOwner, 0)
+	}
+
+	go func() {
+		c.Exec()
+		if hwndOwner != 0 {
+			procEnableWindow.Call(hwndOwner, 1)
+			procSetForegroundWindow.Call(hwndOwner)
+		}
+	}()
+}
+
+// gwlHwndParentIndex returns GWLP_HWNDPARENT (-8) sign-extended to uintptr.
+// Converting the negative literal straight to uintptr is a compile error
+// (Go constant-conversion rules reject negative-to-unsigned even when typed);
+// routing it through an int32 function parameter forces a runtime
+// conversion, which correctly sign-extends instead.
+func gwlHwndParentIndex() uintptr {
+	return gwlIndexToUintptr(-8)
+}
+
+func gwlIndexToUintptr(n int32) uintptr {
+	return uintptr(n)
 }
 
 ///////////////////////////////////////////////////
