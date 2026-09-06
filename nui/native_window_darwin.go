@@ -80,6 +80,11 @@ type nativeWindowPlatform struct {
 
 var hwnds map[windowId]*nativeWindow
 
+// The first window created is treated as the app's main window: closing it quits the
+// whole app immediately, instead of macOS's default of waiting for every window to close.
+var mainWindowID windowId
+var mainWindowIDSet bool
+
 func init() {
 	hwnds = make(map[windowId]*nativeWindow)
 }
@@ -98,6 +103,10 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.hwnd = windowId(C.InitWindow())
 	// Register before Resize so ObjC-triggered go_on_resize reaches Go with a populated hwnds map.
 	hwnds[c.hwnd] = &c
+	if !mainWindowIDSet {
+		mainWindowIDSet = true
+		mainWindowID = c.hwnd
+	}
 
 	c.Resize(width, height)
 	c.windowWidth = int(width)

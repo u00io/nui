@@ -395,6 +395,14 @@ void CloseWindowById(int windowId) {
     }
 }
 
+// Deferred a tick so it doesn't reenter while the caller's own window-close sequence is
+// still on the stack (called from go_on_window_will_close, i.e. from windowWillClose:).
+void QuitApp(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSApp terminate:nil];
+    });
+}
+
 void SetWindowTitle(int windowId, const char* title) {
     NSWindow *w = windowMap[@(windowId)];
     if (w && title) {

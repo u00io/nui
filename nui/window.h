@@ -8,6 +8,7 @@ void ShowModalWindow(int windowId, int parentWindowId);
 void RunEventLoop(void);
 
 void CloseWindowById(int windowId);
+void QuitApp(void);
 void SetWindowTitle(int windowId, const char* title);
 void SetWindowSize(int windowId, int width, int height);
 void SetWindowPosition(int windowId, int x, int y);

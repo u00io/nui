@@ -54,6 +54,9 @@ func go_on_close_request(hwnd C.int) C.int {
 //export go_on_window_will_close
 func go_on_window_will_close(hwnd C.int) {
 	delete(hwnds, windowId(hwnd))
+	if mainWindowIDSet && windowId(hwnd) == mainWindowID {
+		C.QuitApp()
+	}
 }
 
 //export go_on_key_down
