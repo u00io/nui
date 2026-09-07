@@ -331,27 +331,27 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 	}
 }
 
+// Sanity caps on a single window's paintable area, not a shared buffer size.
 const maxCanvasWidth = 6000
 const maxCanvasHeight = 4000
 
-var canvasBuffer = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
-var canvasBufferBackground = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
-var canvasBufferBackgroundColor color.Color
-
-// Every createWindow() call used to redo this fill with the same default color; skip when unchanged.
-func initCanvasBufferBackground(col color.Color) {
-	if canvasBufferBackgroundColor == col {
-		return
+// ensureCanvasBuffer grows this window's own paint buffer to fit size bytes, if needed.
+func (c *nativeWindow) ensureCanvasBuffer(size int) []byte {
+	if cap(c.platform.canvasBuffer) < size {
+		c.platform.canvasBuffer = make([]byte, size)
+	} else {
+		c.platform.canvasBuffer = c.platform.canvasBuffer[:size]
 	}
-	canvasBufferBackgroundColor = col
+	return c.platform.canvasBuffer
+}
 
-	dataSize := maxCanvasWidth * maxCanvasHeight * 4
-	r, g, b, a := col.RGBA()
-	for i := 0; i < dataSize; i += 4 {
-		canvasBufferBackground[i+0] = byte(r)
-		canvasBufferBackground[i+1] = byte(g)
-		canvasBufferBackground[i+2] = byte(b)
-		canvasBufferBackground[i+3] = byte(a)
+// fillCanvasBuffer paints buf with this window's solid background color.
+func fillCanvasBuffer(buf []byte, col color.RGBA) {
+	for i := 0; i+3 < len(buf); i += 4 {
+		buf[i+0] = col.R
+		buf[i+1] = col.G
+		buf[i+2] = col.B
+		buf[i+3] = col.A
 	}
 }
 
@@ -371,6 +371,11 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		var ps t_PAINTSTRUCT
 		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 
+		if win == nil {
+			procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+			return 0
+		}
+
 		hdcWidth, hdcHeight := getHDCSize(hdc)
 		if hdcWidth > maxCanvasWidth {
 			hdcWidth = maxCanvasWidth
@@ -380,17 +385,18 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			hdcHeight = maxCanvasHeight
 		}
 
+		// Clear the canvas to this window's own background color.
+		canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
+		buf := win.ensureCanvasBuffer(canvasDataBufferSize)
+		fillCanvasBuffer(buf, win.platform.bgColor)
+
 		img := &image.RGBA{
-			Pix:    canvasBuffer,
+			Pix:    buf,
 			Stride: int(hdcWidth) * 4,
 			Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
 		}
 
-		// Clear the canvas
-		canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
-		copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
-
-		if win != nil && win.onPaint != nil {
+		if win.onPaint != nil {
 			win.onPaint(img)
 		}
 

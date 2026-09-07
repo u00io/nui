@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math/rand"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -22,86 +23,126 @@ type windowId syscall.Handle
 var appWindowsMu sync.Mutex
 
 type nativeWindowPlatform struct {
+	// Per-window paint surface and background color, sized to the window's
+	// current dimensions. These used to be process-wide globals, which broke
+	// as soon as a second window (e.g. a modal dialog) was created: every
+	// createWindow() call reset the shared background to the default color,
+	// clobbering whatever the first window had set via SetBackgroundColor.
+	canvasBuffer []byte
+	bgColor      color.RGBA
+
+	// GetMessage/PeekMessage only ever deliver a window's messages to the OS
+	// thread that created it (and PostQuitMessage only quits that same
+	// thread's queue), so CreateWindowExW and the whole message loop must run
+	// on one dedicated, locked OS thread for the window's entire life.
+	// createWindow() spawns that thread and starts the pump on it right away
+	// (see pumpMessages); EventLoop(), whichever goroutine calls it (Exec,
+	// ShowModal's own goroutine, etc.), just waits on pumpDone. Without this,
+	// a second window's own PostQuitMessage could land on another window's
+	// (e.g. the main window's) thread and close the whole app instead of
+	// just itself.
+	//
+	// The pump must start immediately rather than wait for an explicit
+	// signal from EventLoop(): Win32 cross-thread calls (SendMessageW,
+	// SetWindowText, ShowWindow, ...) are only ever delivered while the
+	// owning thread is blocked inside GetMessage/PeekMessage - a thread
+	// merely parked on a Go channel receive is invisible to that mechanism.
+	// SetAppIcon (called right after createWindow() returns, from the
+	// caller's own goroutine) would otherwise deadlock forever waiting for a
+	// pump that never starts.
+	pumpDone chan struct{}
 }
 
 // ///////////////////////////////////////////////////
 // Window creation and management
 
 func createWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) *nativeWindow {
-	var c nativeWindow
-	c.dblClickTime = 300 * time.Millisecond
-	c.showMaximized = maximized
+	created := make(chan *nativeWindow, 1)
 
-	// Create a unique class name
-	dt := time.Now().Format("2006-01-02-15-04-05")
-	randomNumber := rand.Intn(1024 * 1024)
-	tempClassName := "WCL" + dt + strconv.Itoa(randomNumber)
-	className, _ := syscall.UTF16PtrFromString(tempClassName)
+	go func() {
+		runtime.LockOSThread()
 
-	initCanvasBufferBackground(color.RGBA{0x1F, 0x1F, 0x1F, 255})
+		var c nativeWindow
+		c.dblClickTime = 300 * time.Millisecond
+		c.showMaximized = maximized
+		c.platform.pumpDone = make(chan struct{})
 
-	// Set default window title
-	windowTitle, _ := syscall.UTF16PtrFromString(title)
+		// Create a unique class name
+		dt := time.Now().Format("2006-01-02-15-04-05")
+		randomNumber := rand.Intn(1024 * 1024)
+		tempClassName := "WCL" + dt + strconv.Itoa(randomNumber)
+		className, _ := syscall.UTF16PtrFromString(tempClassName)
 
-	// Set default cursor
-	c.currentCursor = nuimouse.MouseCursorArrow
+		c.platform.bgColor = color.RGBA{0x1F, 0x1F, 0x1F, 255}
 
-	// Get the instance handle
-	hInstance, _, _ := procGetModuleHandleW.Call(0)
+		// Set default window title
+		windowTitle, _ := syscall.UTF16PtrFromString(title)
 
-	// Register the window class
-	wndClass := t_WNDCLASSEXW{
-		cbSize:        uint32(unsafe.Sizeof(t_WNDCLASSEXW{})),
-		style:         c_CS_OWNDC, /*| c_CS_DBLCLKS*/
-		lpfnWndProc:   syscall.NewCallback(wndProc),
-		hInstance:     syscall.Handle(hInstance),
-		hCursor:       0,
-		hbrBackground: 5,
-		lpszClassName: className,
-	}
-	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass)))
+		// Set default cursor
+		c.currentCursor = nuimouse.MouseCursorArrow
 
-	windowFlags := uint32(c_WS_OVERLAPPEDWINDOW)
-	if c.showMaximized {
-		windowFlags |= c_WS_MAXIMIZE
-	}
+		// Get the instance handle
+		hInstance, _, _ := procGetModuleHandleW.Call(0)
 
-	// Create the window
-	hwnd, _, _ := procCreateWindowExW.Call(
-		0,
-		uintptr(unsafe.Pointer(className)),
-		uintptr(unsafe.Pointer(windowTitle)),
-		uintptr(windowFlags),
-		c_CW_USEDEFAULT,
-		c_CW_USEDEFAULT,
-		uintptr(width),
-		uintptr(height),
-		0,
-		0,
-		hInstance,
-		0,
-	)
+		// Register the window class
+		wndClass := t_WNDCLASSEXW{
+			cbSize:        uint32(unsafe.Sizeof(t_WNDCLASSEXW{})),
+			style:         c_CS_OWNDC, /*| c_CS_DBLCLKS*/
+			lpfnWndProc:   syscall.NewCallback(wndProc),
+			hInstance:     syscall.Handle(hInstance),
+			hCursor:       0,
+			hbrBackground: 5,
+			lpszClassName: className,
+		}
+		procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass)))
 
-	c.windowWidth = width
-	c.windowHeight = height
+		windowFlags := uint32(c_WS_OVERLAPPEDWINDOW)
+		if c.showMaximized {
+			windowFlags |= c_WS_MAXIMIZE
+		}
 
-	// Store the window handle
-	c.hwnd = windowId(syscall.Handle(hwnd))
-	appWindowsMu.Lock()
-	app.windows[c.hwnd] = &c
-	appWindowsMu.Unlock()
+		// Create the window
+		hwnd, _, _ := procCreateWindowExW.Call(
+			0,
+			uintptr(unsafe.Pointer(className)),
+			uintptr(unsafe.Pointer(windowTitle)),
+			uintptr(windowFlags),
+			c_CW_USEDEFAULT,
+			c_CW_USEDEFAULT,
+			uintptr(width),
+			uintptr(height),
+			0,
+			0,
+			hInstance,
+			0,
+		)
 
-	// Set default icon
-	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
-	c.SetAppIcon(icon)
+		c.windowWidth = width
+		c.windowHeight = height
 
-	if center && !maximized {
-		c.MoveToCenterOfScreen()
-	}
+		// Store the window handle
+		c.hwnd = windowId(syscall.Handle(hwnd))
+		appWindowsMu.Lock()
+		app.windows[c.hwnd] = &c
+		appWindowsMu.Unlock()
 
-	setDarkMode(hwnd, true)
+		// Set default icon
+		icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
+		c.SetAppIcon(icon)
 
-	return &c
+		if center && !maximized {
+			c.MoveToCenterOfScreen()
+		}
+
+		setDarkMode(hwnd, true)
+
+		created <- &c
+
+		c.pumpMessages()
+		close(c.platform.pumpDone)
+	}()
+
+	return <-created
 }
 
 func (c *nativeWindow) Show() {
@@ -120,7 +161,17 @@ func (c *nativeWindow) Update() {
 	procUpdateWindow.Call(uintptr(c.hwnd))
 }
 
+// EventLoop blocks the calling goroutine until the window is closed. The
+// actual GetMessage/DispatchMessage pump always runs on the dedicated OS
+// thread that created c.hwnd (see nativeWindowPlatform) and is already
+// running by the time this is called - so this just waits for it to finish.
 func (c *nativeWindow) EventLoop() {
+	<-c.platform.pumpDone
+}
+
+// pumpMessages runs the real GetMessage/DispatchMessage loop. It must only
+// ever be called from the dedicated OS thread that created c.hwnd.
+func (c *nativeWindow) pumpMessages() {
 	var msg t_MSG
 
 	procSetTimer.Call(
@@ -213,7 +264,7 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 }
 
 func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {
-	initCanvasBufferBackground(color)
+	c.platform.bgColor = color
 	c.Update()
 }
 
