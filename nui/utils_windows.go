@@ -62,6 +62,7 @@ var (
 	procGetKeyState = user32.NewProc("GetKeyState")
 
 	procEnableWindow        = user32.NewProc("EnableWindow")
+	procGetWindowLongPtrW   = user32.NewProc("GetWindowLongPtrW")
 	procSetWindowLongPtrW   = user32.NewProc("SetWindowLongPtrW")
 	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
 
@@ -85,10 +86,14 @@ const (
 	c_SM_CXSCREEN = 0
 	c_SM_CYSCREEN = 1
 
-	c_SWP_NOSIZE     = 0x0001
-	c_SWP_NOMOVE     = 0x0002
-	c_SWP_NOZORDER   = 0x0004
-	c_SWP_NOACTIVATE = 0x0010
+	c_SWP_NOSIZE       = 0x0001
+	c_SWP_NOMOVE       = 0x0002
+	c_SWP_NOZORDER     = 0x0004
+	c_SWP_NOACTIVATE   = 0x0010
+	c_SWP_FRAMECHANGED = 0x0020
+
+	c_WS_MINIMIZEBOX = 0x00020000
+	c_WS_MAXIMIZEBOX = 0x00010000
 
 	c_WM_SETICON      = 0x0080
 	c_ICON_SMALL      = 0

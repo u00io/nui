@@ -59,6 +59,12 @@ type Window interface {
 	MaximizeWindow()
 	IsMaximized() bool
 
+	// SetAllowMinimize and SetAllowMaximize show or hide the titlebar's
+	// minimize/maximize buttons, e.g. for dialog-style windows that
+	// shouldn't offer them. Both default to allowed.
+	SetAllowMinimize(allow bool)
+	SetAllowMaximize(allow bool)
+
 	// Get window information
 	Size() (width, height int)
 	Pos() (x, y int)

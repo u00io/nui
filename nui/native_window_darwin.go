@@ -246,6 +246,25 @@ func (c *nativeWindow) MaximizeWindow() {
 	C.MaximizeWindow(C.int(c.hwnd))
 }
 
+// SetAllowMinimize shows or hides the titlebar's miniaturize button, e.g. for
+// dialog-style windows that shouldn't offer it.
+func (c *nativeWindow) SetAllowMinimize(allow bool) {
+	C.SetWindowAllowMinimize(C.int(c.hwnd), boolToCInt(allow))
+}
+
+// SetAllowMaximize shows or hides the titlebar's zoom button, e.g. for
+// dialog-style windows that shouldn't offer it.
+func (c *nativeWindow) SetAllowMaximize(allow bool) {
+	C.SetWindowAllowMaximize(C.int(c.hwnd), boolToCInt(allow))
+}
+
+func boolToCInt(b bool) C.int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 //////////////////////////////////////////////////
 // Window information
 

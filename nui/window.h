@@ -41,6 +41,11 @@ char* ShowOpenFileDialog(int parentWindowId, const char* title, const char* defa
 char* ShowSaveFileDialog(int parentWindowId, const char* title, const char* defaultDirectory, const char* defaultFileName, const char* extensionsCSV);
 char* ShowSelectDirectoryDialog(int parentWindowId, const char* title, const char* defaultDirectory);
 
+// Shows/hides the titlebar's miniaturize (yellow) / zoom (green) buttons,
+// e.g. for dialog-style windows that shouldn't offer them.
+void SetWindowAllowMinimize(int windowId, int allow);
+void SetWindowAllowMaximize(int windowId, int allow);
+
 void go_on_paint(int hwnd, void* buffer, int width, int height);
 void go_on_key_down(int hwnd, int keycode);
 void go_on_key_up(int hwnd, int keycode);

@@ -37,6 +37,9 @@ func log(s string) {
 // testing a modal stacked on top of a non-modal (or another modal) window.
 func showLabelWindow(text string, modal bool, parent nui.Window) {
 	w := nui.CreateWindow(text, 0, 0, 320, 160, true, false)
+	// Dialog-style windows: no reason to offer minimize/maximize.
+	w.SetAllowMinimize(false)
+	w.SetAllowMaximize(false)
 	w.OnPaint(func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
 		cnv.SetColor(color.RGBA{0, 255, 0, 255})

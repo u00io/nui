@@ -743,6 +743,43 @@ char* ShowSaveFileDialog(int parentWindowId, const char* title, const char* defa
     return result;
 }
 
+///////////////////////////////////////////////////
+// Titlebar button visibility
+
+// NSWindowStyleMaskMiniaturizable governs both the miniaturize button's
+// presence AND whether Cmd+M/the Window menu can miniaturize, so toggling it
+// alone fully disables minimize, not just its button.
+void SetWindowAllowMinimize(int windowId, int allow) {
+    NUI_RunOnMainSync(^{
+        NSWindow *w = windowMap[@(windowId)];
+        if (!w) return;
+
+        NSWindowStyleMask mask = w.styleMask;
+        if (allow) {
+            mask |= NSWindowStyleMaskMiniaturizable;
+        } else {
+            mask &= ~NSWindowStyleMaskMiniaturizable;
+        }
+        w.styleMask = mask;
+    });
+}
+
+// Unlike miniaturize, AppKit ties the zoom button's enabled state to
+// NSWindowStyleMaskResizable - there's no bit for "just the zoom button"
+// that leaves edge-drag resizing alone, and there's no default zoom
+// shortcut to worry about bypassing the button - so this just hides it.
+void SetWindowAllowMaximize(int windowId, int allow) {
+    NUI_RunOnMainSync(^{
+        NSWindow *w = windowMap[@(windowId)];
+        if (!w) return;
+
+        NSButton *zoomButton = [w standardWindowButton:NSWindowZoomButton];
+        if (zoomButton) {
+            zoomButton.hidden = !allow;
+        }
+    });
+}
+
 char* ShowSelectDirectoryDialog(int parentWindowId, const char* title, const char* defaultDirectory) {
     __block char* result = NULL;
 

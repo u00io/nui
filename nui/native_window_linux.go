@@ -72,6 +72,12 @@ type nativeWindowPlatform struct {
 	// Per-window paint surface, sized to the window's current dimensions.
 	canvasBuffer []byte
 	bgColor      color.RGBA
+
+	// setWindowDecorations() sets the minimize/maximize _MOTIF_WM_HINTS bits
+	// together as one property, so SetAllowMinimize/SetAllowMaximize each
+	// need the other's last-set value on hand to avoid clobbering it.
+	allowMinimize bool
+	allowMaximize bool
 }
 
 type rect struct {
@@ -146,6 +152,8 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	var c nativeWindow
 	c.showMaximized = maximized
 	c.platform.bgColor = color.RGBA{0, 50, 0, 255}
+	c.platform.allowMinimize = true
+	c.platform.allowMaximize = true
 	c.platform.prevSetPosX = -1
 	c.platform.prevSetPosY = -1
 
@@ -814,6 +822,31 @@ func (c *nativeWindow) MinimizeWindow() {
 
 func (c *nativeWindow) MaximizeWindow() {
 	C.maximizeWindow(c.platform.display, c.platform.window)
+}
+
+// SetAllowMinimize shows or hides the titlebar's minimize button via
+// _MOTIF_WM_HINTS, e.g. for dialog-style windows that shouldn't offer it.
+func (c *nativeWindow) SetAllowMinimize(allow bool) {
+	c.platform.allowMinimize = allow
+	c.applyWindowDecorations()
+}
+
+// SetAllowMaximize shows or hides the titlebar's maximize button via
+// _MOTIF_WM_HINTS, e.g. for dialog-style windows that shouldn't offer it.
+func (c *nativeWindow) SetAllowMaximize(allow bool) {
+	c.platform.allowMaximize = allow
+	c.applyWindowDecorations()
+}
+
+func (c *nativeWindow) applyWindowDecorations() {
+	allowMin, allowMax := C.int(0), C.int(0)
+	if c.platform.allowMinimize {
+		allowMin = 1
+	}
+	if c.platform.allowMaximize {
+		allowMax = 1
+	}
+	C.setWindowDecorations(c.platform.display, c.platform.window, allowMin, allowMax)
 }
 
 // ShowModal marks the window as a modal dialog owned by parent (WM_TRANSIENT_FOR +

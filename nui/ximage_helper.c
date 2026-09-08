@@ -90,3 +90,54 @@ void setWindowModal(Display* display, Window window, Window parent) {
     XSendEvent(display, root, False, SubstructureRedirectMask | SubstructureNotifyMask, (XEvent*)&xev);
 }
 
+// Motif WM hints: the de-facto cross-desktop (GNOME/KDE/XFCE) convention for
+// asking a window manager to add/remove specific titlebar decorations and
+// functions on an otherwise plain X11 top-level window. Not part of any ICCCM/
+// EWMH spec, but this exact 5-field, format-32 layout is what GTK/Qt/wxWidgets
+// all write, so window managers reliably honor it.
+typedef struct {
+    unsigned long flags;
+    unsigned long functions;
+    unsigned long decorations;
+    long input_mode;
+    unsigned long status;
+} MotifWmHints;
+
+#define MWM_HINTS_FUNCTIONS   (1L << 0)
+#define MWM_HINTS_DECORATIONS (1L << 1)
+
+// With the *_ALL bit set, the remaining bits name what to REMOVE from "all
+// enabled" rather than what to include - this is Motif's documented
+// inversion, not a typo. It's the only way to disable just minimize/maximize
+// without also having to explicitly re-list move/resize/close.
+#define MWM_FUNC_ALL      (1L << 0)
+#define MWM_FUNC_MINIMIZE (1L << 3)
+#define MWM_FUNC_MAXIMIZE (1L << 4)
+
+#define MWM_DECOR_ALL      (1L << 0)
+#define MWM_DECOR_MINIMIZE (1L << 5)
+#define MWM_DECOR_MAXIMIZE (1L << 6)
+
+void setWindowDecorations(Display* display, Window window, int allowMinimize, int allowMaximize) {
+    Atom motifHints = XInternAtom(display, "_MOTIF_WM_HINTS", False);
+    if (motifHints == None) return;
+
+    MotifWmHints hints = {0};
+    hints.flags = MWM_HINTS_FUNCTIONS | MWM_HINTS_DECORATIONS;
+    hints.functions = MWM_FUNC_ALL;
+    hints.decorations = MWM_DECOR_ALL;
+
+    if (!allowMinimize) {
+        hints.functions |= MWM_FUNC_MINIMIZE;
+        hints.decorations |= MWM_DECOR_MINIMIZE;
+    }
+    if (!allowMaximize) {
+        hints.functions |= MWM_FUNC_MAXIMIZE;
+        hints.decorations |= MWM_DECOR_MAXIMIZE;
+    }
+
+    XChangeProperty(display, window, motifHints, motifHints, 32, PropModeReplace,
+                    (unsigned char*)&hints, 5);
+    XFlush(display);
+}
+

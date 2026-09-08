@@ -320,6 +320,40 @@ func (c *nativeWindow) MaximizeWindow() {
 	procShowWindow.Call(uintptr(c.hwnd), c_SW_SHOWMAXIMIZED)
 }
 
+// SetAllowMinimize shows or hides the titlebar's minimize button by toggling
+// WS_MINIMIZEBOX, e.g. for dialog-style windows that shouldn't offer it.
+func (c *nativeWindow) SetAllowMinimize(allow bool) {
+	c.toggleWindowStyleBit(c_WS_MINIMIZEBOX, allow)
+}
+
+// SetAllowMaximize shows or hides the titlebar's maximize button by toggling
+// WS_MAXIMIZEBOX, e.g. for dialog-style windows that shouldn't offer it.
+func (c *nativeWindow) SetAllowMaximize(allow bool) {
+	c.toggleWindowStyleBit(c_WS_MAXIMIZEBOX, allow)
+}
+
+// toggleWindowStyleBit flips a GWL_STYLE bit and asks the non-client frame
+// (titlebar/buttons) to redraw so the change is visible immediately.
+func (c *nativeWindow) toggleWindowStyleBit(bit uint32, set bool) {
+	style, _, _ := procGetWindowLongPtrW.Call(uintptr(c.hwnd), gwlStyleIndex())
+	newStyle := uint32(style)
+	if set {
+		newStyle |= bit
+	} else {
+		newStyle &^= bit
+	}
+	procSetWindowLongPtrW.Call(uintptr(c.hwnd), gwlStyleIndex(), uintptr(newStyle))
+
+	flags := c_SWP_NOMOVE | c_SWP_NOSIZE | c_SWP_NOZORDER | c_SWP_NOACTIVATE | c_SWP_FRAMECHANGED
+	procSetWindowPos.Call(uintptr(c.hwnd), 0, 0, 0, 0, 0, uintptr(flags))
+}
+
+// gwlStyleIndex returns GWL_STYLE (-16) sign-extended to uintptr; see
+// gwlHwndParentIndex for why this needs the int32-parameter indirection.
+func gwlStyleIndex() uintptr {
+	return gwlIndexToUintptr(-16)
+}
+
 //////////////////////////////////////////////////
 // Window information
 
