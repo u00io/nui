@@ -31,6 +31,9 @@ func Run() {
 	win1.OnKeyDown(func(keyCode nuikey.Key, mods nuikey.KeyModifiers) bool {
 		if keyCode == nuikey.KeySpace {
 			dlg := nui.CreateWindow("Modal dialog", 0, 0, 300, 150, true, false)
+			// Dialog-style window: no reason to offer minimize/maximize.
+			dlg.SetAllowMinimize(false)
+			dlg.SetAllowMaximize(false)
 			dlg.OnPaint(func(rgba *image.RGBA) {
 				paintLabel(rgba, "Modal dialog (Esc to close)")
 			})

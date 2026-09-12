@@ -88,6 +88,20 @@ type nativeWindowPlatform struct {
 	// backend this doesn't need a dedicated locked OS thread from creation.
 	pumpStarted bool
 	pumpDone    chan struct{}
+
+	// modalChildCount counts this window's currently-open ShowModal children.
+	// While > 0, pumpEvents drops keyboard/mouse callbacks for this window:
+	// kwin_x11 (and apparently other Linux WMs) accepts _NET_WM_STATE_MODAL
+	// and withholds keyboard focus from the parent, but still happily
+	// delivers pointer button/motion events straight to it, so nui has to
+	// enforce the block itself. Accessed with atomics since ShowModal/doClose
+	// can run on a different goroutine than this window's own pump loop.
+	modalChildCount int32
+
+	// modalParent is the window this dialog was shown modally over (set by
+	// ShowModal), kept so doClose can decrement its modalChildCount and
+	// un-block it again once this dialog closes.
+	modalParent *nativeWindow
 }
 
 type rect struct {
@@ -337,11 +351,23 @@ func (c *nativeWindow) pumpEvents() {
 				}
 			}
 
+			// A modal dialog owned by this window is open: kwin_x11 (and
+			// apparently other Linux WMs) withholds keyboard focus from us
+			// but still delivers pointer/keyboard events straight to this
+			// window, so drop them here ourselves instead of dispatching to
+			// app callbacks. Once the dialog closes, doClose() drops
+			// modalChildCount back to 0 and these events flow again.
+			if c.inputBlocked() {
+				switch eventType(event) {
+				case C.KeyPress, C.KeyRelease, C.ButtonPress, C.ButtonRelease, C.MotionNotify, C.EnterNotify, C.LeaveNotify:
+					continue
+				}
+			}
+
 			switch eventType(event) {
 
 			case C.Expose:
 				{
-					fmt.Println("Expose window", c.platform.window)
 					{
 						dtBeginPaint := time.Now()
 						dtLastPaint = time.Now()
@@ -389,6 +415,19 @@ func (c *nativeWindow) pumpEvents() {
 			case C.UnmapNotify:
 				unmapEvent := (*C.XUnmapEvent)(unsafe.Pointer(&event))
 				fmt.Printf("Window was hidden. Window ID: %d\n", unmapEvent.window)
+
+				// The WM just iconified us (titlebar button, window menu,
+				// keyboard shortcut - ICCCM has the client unmap itself to go
+				// Iconic regardless of which one triggered it), but
+				// SetAllowMinimize(false) says this window shouldn't be
+				// minimizable. Since kwin's decoration doesn't reliably honor
+				// the _MOTIF_WM_HINTS decorations bits for button visibility
+				// on every theme, undo the effect directly: re-map right
+				// away instead of trying to prevent the click itself.
+				if !c.platform.allowMinimize && !c.platform.closed && atomic.LoadInt32(&c.platform.closeRequested) == 0 {
+					C.XMapWindow(c.platform.display, c.platform.window)
+					C.XFlush(c.platform.display)
+				}
 
 			case C.DestroyNotify:
 				destroyEvent := (*C.XDestroyWindowEvent)(unsafe.Pointer(&event))
@@ -607,6 +646,13 @@ func (c *nativeWindow) pumpEvents() {
 				if xclient.message_type == c.platform.wmProtocols &&
 					C.Atom(data0) == c.platform.wmDeleteWindow {
 
+					if c.inputBlocked() {
+						// A modal dialog owned by this window is open - refuse
+						// the close request outright, same as native modal
+						// dialogs do, without even asking onCloseRequest.
+						break
+					}
+
 					allowClose := true
 					if c.onCloseRequest != nil {
 						allowClose = c.onCloseRequest()
@@ -617,6 +663,18 @@ func (c *nativeWindow) pumpEvents() {
 						// actually flushed before this event loop stops pumping.
 						c.Close()
 					}
+				}
+
+			case C.PropertyNotify:
+				propEvent := (*C.XPropertyEvent)(unsafe.Pointer(&event))
+				if propEvent.atom == c.platform.netWMState && !c.platform.allowMaximize && c.IsMaximized() {
+					// Same idea as the UnmapNotify case above: the WM just
+					// maximized us (button, window menu, double-click on the
+					// titlebar, drag-to-edge, ...) despite
+					// SetAllowMaximize(false), so ask it to un-maximize
+					// again right away rather than relying on it to have
+					// refused the click in the first place.
+					C.restoreWindow(c.platform.display, c.platform.window)
 				}
 			}
 
@@ -647,7 +705,15 @@ func (c *nativeWindow) pumpEvents() {
 // XCloseDisplay teardown always runs on the window's own Exec goroutine
 // (see doClose), since closing the Display while that goroutine might still
 // be mid-call on it (XPending/XNextEvent) would be a use-after-free.
+//
+// Refuses to close a window that still has a modal dialog open on top of
+// it (inputBlocked), the same as the WM_DELETE_WINDOW handler in
+// pumpEvents - covers Close() being called directly (e.g. from a menu
+// action) rather than only via the titlebar close button.
 func (c *nativeWindow) Close() {
+	if c.inputBlocked() {
+		return
+	}
 	atomic.StoreInt32(&c.platform.closeRequested, 1)
 }
 
@@ -657,6 +723,11 @@ func (c *nativeWindow) doClose() {
 	C.XDestroyWindow(c.platform.display, c.platform.window)
 	C.XCloseDisplay(c.platform.display)
 	c.platform.closed = true
+
+	if c.platform.modalParent != nil {
+		atomic.AddInt32(&c.platform.modalParent.platform.modalChildCount, -1)
+		c.platform.modalParent = nil
+	}
 
 	hwndsMu.Lock()
 	delete(hwnds, windowId(c.platform.window))
@@ -887,8 +958,10 @@ func (c *nativeWindow) applyWindowDecorations() {
 
 // ShowModal marks the window as a modal dialog owned by parent (WM_TRANSIENT_FOR +
 // _NET_WM_STATE_MODAL) and shows it. Show() already runs the event pump on its
-// own goroutine, so parent's event loop/timer keep running; the WM still
-// blocks input to parent.
+// own goroutine, so parent's event loop/timer keep running. The WM (verified
+// against kwin_x11/KDE) only honors this for keyboard focus, not pointer
+// input, so parent's own pump loop also drops keyboard/mouse callbacks for
+// as long as this dialog - tracked via parent's modalChildCount - stays open.
 func (c *nativeWindow) ShowModal(parent Window) {
 	// Map first: setWindowModal's _NET_WM_STATE_MODAL request is a
 	// ClientMessage sent to root, which a WM only honors for a window it
@@ -897,8 +970,16 @@ func (c *nativeWindow) ShowModal(parent Window) {
 	// just non-modal, since it's asking about a window it doesn't know yet.
 	c.Show()
 	if p, ok := parent.(*nativeWindow); ok && p != nil {
+		c.platform.modalParent = p
+		atomic.AddInt32(&p.platform.modalChildCount, 1)
 		C.setWindowModal(c.platform.display, c.platform.window, p.platform.window)
 	}
+}
+
+// inputBlocked reports whether c should drop keyboard/mouse callbacks
+// because a modal dialog it owns is currently open (see modalChildCount).
+func (c *nativeWindow) inputBlocked() bool {
+	return atomic.LoadInt32(&c.platform.modalChildCount) > 0
 }
 
 func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
