@@ -10,17 +10,11 @@ import (
 
 type Window interface {
 	// Change window
-	Exec()
-	Show()
-	Update()
-	EventLoop()
-	Close()
-
-	// ShowModal sets platform hints marking this window as a modal dialog
-	// owned by parent, then shows it. The window manager blocks mouse/keyboard
-	// input to parent while it's open, but parent's own event loop (repaint,
-	// timers) keeps running: ShowModal returns immediately, it does not block.
-	ShowModal(parent Window)
+	Show()                   // Shows the window, non-modal; returns immediately
+	ShowModal(parent Window) // Shows the window as a modal dialog owned by parent; returns immediately
+	Update()                 // Updates the window content
+	Close()                  // Closes the window
+	Exec()                   // Waits for the window to close
 
 	SystemHandle() any
 
@@ -59,9 +53,6 @@ type Window interface {
 	MaximizeWindow()
 	IsMaximized() bool
 
-	// SetAllowMinimize and SetAllowMaximize show or hide the titlebar's
-	// minimize/maximize buttons, e.g. for dialog-style windows that
-	// shouldn't offer them. Both default to allowed.
 	SetAllowMinimize(allow bool)
 	SetAllowMaximize(allow bool)
 

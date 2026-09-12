@@ -57,15 +57,16 @@ func CreateDefaultWindow() Window {
 	return w
 }
 
-// Run shows and runs each window's event loop concurrently, one goroutine per
-// window, and blocks until all of them have been closed. Additional windows
-// created later (e.g. from a callback) can still be launched manually with
-// `go win.Exec()` — Run is just a convenience for the common case.
+// Run shows each window and blocks until all of them have been closed.
+// Additional windows created later (e.g. from a callback) don't need Run at
+// all: Show() (or ShowModal()) already makes a window live entirely on its
+// own, hiding whatever goroutine it needs internally - call Exec() yourself
+// afterward only if you specifically need to block until that window closes.
 //
-// The first window's Exec() runs on the calling goroutine rather than a
-// spawned one: on Cocoa the real event loop must start on the process's
-// original thread, so callers must never wrap their first Exec()/Run() call
-// in `go` themselves.
+// The first window's Show()/Exec() run on the calling goroutine rather than
+// a spawned one: on Cocoa the real event loop must start on the process's
+// original thread, so callers must never wrap their first Run() call in
+// `go` themselves.
 func Run(windows ...Window) {
 	if len(windows) == 0 {
 		return
@@ -76,9 +77,11 @@ func Run(windows ...Window) {
 		wg.Add(1)
 		go func(w Window) {
 			defer wg.Done()
+			w.Show()
 			w.Exec()
 		}(w)
 	}
+	windows[0].Show()
 	windows[0].Exec()
 	wg.Wait()
 }

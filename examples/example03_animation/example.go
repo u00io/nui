@@ -58,5 +58,5 @@ func Run() {
 		}
 		wnd.Update()
 	})
-	wnd.EventLoop()
+	wnd.Exec()
 }

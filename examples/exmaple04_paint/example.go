@@ -54,5 +54,5 @@ func Run() {
 	wnd.SetTitle("Example 04 - Paint")
 	wnd.Show()
 	wnd.Resize(800, 600)
-	wnd.EventLoop()
+	wnd.Exec()
 }

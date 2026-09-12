@@ -46,7 +46,7 @@ type nativeWindowPlatform struct {
 	screen  C.int
 
 	closed bool
-	// Set by Close() from any goroutine; only the owning EventLoop goroutine
+	// Set by Close() from any goroutine; only the owning Exec goroutine
 	// acts on it and actually tears down the Display, avoiding a use-after-free
 	// if Close() is called from another window's goroutine.
 	closeRequested int32
@@ -78,6 +78,16 @@ type nativeWindowPlatform struct {
 	// need the other's last-set value on hand to avoid clobbering it.
 	allowMinimize bool
 	allowMaximize bool
+
+	// Show() maps the window and spawns pumpEvents() on its own goroutine
+	// exactly once (pumpStarted guards that), so callers never have to know
+	// this needs its own goroutine at all - Exec() just waits on
+	// pumpDone. Xlib itself has no thread-affinity requirement like Win32's
+	// (XInitThreads(), called at package init, is enough to let another
+	// goroutine safely drive this Display later), so unlike the Windows
+	// backend this doesn't need a dedicated locked OS thread from creation.
+	pumpStarted bool
+	pumpDone    chan struct{}
 }
 
 type rect struct {
@@ -185,8 +195,6 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	C.XSelectInput(c.platform.display, c.platform.window, C.ExposureMask|C.PropertyChangeMask|C.StructureNotifyMask|C.KeyPressMask|C.KeyReleaseMask|C.EnterWindowMask|C.LeaveWindowMask|C.ButtonPressMask|C.ButtonReleaseMask|C.PointerMotionMask)
 
-	C.XMapWindow(c.platform.display, c.platform.window)
-
 	var getAttr C.XWindowAttributes
 	C.XGetWindowAttributes(c.platform.display, c.platform.window, &getAttr)
 	c.windowWidth, c.windowHeight = int(getAttr.width), int(getAttr.height)
@@ -238,7 +246,24 @@ func (c *nativeWindow) initWindowStateAtoms() {
 	c.platform.netWMStateMaximizedVert = C.XInternAtom(display, nameMaxV, C.False)
 }
 
+// Show maps the window and, the first time it's called, starts this
+// window's own event pump on a new goroutine - callers never need to spawn
+// one themselves (compare ShowModal, which has always hidden this the same
+// way). Safe to call more than once; only the first call does anything.
 func (c *nativeWindow) Show() {
+	if c.platform.pumpStarted {
+		return
+	}
+	c.platform.pumpStarted = true
+	c.platform.pumpDone = make(chan struct{})
+
+	C.XMapWindow(c.platform.display, c.platform.window)
+	C.XFlush(c.platform.display)
+
+	go func() {
+		c.pumpEvents()
+		close(c.platform.pumpDone)
+	}()
 }
 
 func (c *nativeWindow) Hide() {
@@ -271,7 +296,17 @@ var posY C.uint
 var width C.uint
 var height C.uint*/
 
-func (c *nativeWindow) EventLoop() {
+// Exec blocks the calling goroutine until this window closes. The actual
+// X11 event pump runs on the goroutine Show() started (idempotent, so
+// calling it here covers a bare Exec() call with no prior Show()).
+func (c *nativeWindow) Exec() {
+	c.Show()
+	<-c.platform.pumpDone
+}
+
+// pumpEvents is the real XPending/XNextEvent loop, run on the goroutine
+// Show() spawns for the life of the window.
+func (c *nativeWindow) pumpEvents() {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -306,6 +341,7 @@ func (c *nativeWindow) EventLoop() {
 
 			case C.Expose:
 				{
+					fmt.Println("Expose window", c.platform.window)
 					{
 						dtBeginPaint := time.Now()
 						dtLastPaint = time.Now()
@@ -608,7 +644,7 @@ func (c *nativeWindow) EventLoop() {
 
 // Close requests the window to close and is safe to call from any goroutine
 // (e.g. a parent window closing a dialog it owns). The actual XDestroyWindow/
-// XCloseDisplay teardown always runs on the window's own EventLoop goroutine
+// XCloseDisplay teardown always runs on the window's own Exec goroutine
 // (see doClose), since closing the Display while that goroutine might still
 // be mid-call on it (XPending/XNextEvent) would be a use-after-free.
 func (c *nativeWindow) Close() {
@@ -616,7 +652,7 @@ func (c *nativeWindow) Close() {
 }
 
 // doClose performs the actual Xlib teardown. Must only be called from the
-// window's own EventLoop goroutine.
+// window's own Exec goroutine.
 func (c *nativeWindow) doClose() {
 	C.XDestroyWindow(c.platform.display, c.platform.window)
 	C.XCloseDisplay(c.platform.display)
@@ -850,13 +886,19 @@ func (c *nativeWindow) applyWindowDecorations() {
 }
 
 // ShowModal marks the window as a modal dialog owned by parent (WM_TRANSIENT_FOR +
-// _NET_WM_STATE_MODAL) and shows it. Runs its own event loop on a new goroutine so
-// parent's event loop/timer keep running; the WM still blocks input to parent.
+// _NET_WM_STATE_MODAL) and shows it. Show() already runs the event pump on its
+// own goroutine, so parent's event loop/timer keep running; the WM still
+// blocks input to parent.
 func (c *nativeWindow) ShowModal(parent Window) {
+	// Map first: setWindowModal's _NET_WM_STATE_MODAL request is a
+	// ClientMessage sent to root, which a WM only honors for a window it
+	// already manages (i.e. already mapped). Sending it before Show() maps
+	// the window means the WM silently drops it - the window still opens,
+	// just non-modal, since it's asking about a window it doesn't know yet.
+	c.Show()
 	if p, ok := parent.(*nativeWindow); ok && p != nil {
 		C.setWindowModal(c.platform.display, c.platform.window, p.platform.window)
 	}
-	go c.Exec()
 }
 
 func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {

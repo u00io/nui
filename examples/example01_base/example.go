@@ -5,5 +5,7 @@ import (
 )
 
 func Run() {
-	nui.CreateDefaultWindow().Exec()
+	w := nui.CreateDefaultWindow()
+	w.Show()
+	w.Exec()
 }

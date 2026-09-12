@@ -59,7 +59,7 @@ func showLabelWindow(text string, modal bool, parent nui.Window) {
 	if modal {
 		w.ShowModal(parent)
 	} else {
-		go w.Exec()
+		w.Show()
 	}
 }
 
@@ -313,7 +313,7 @@ func Run() {
 	winWidth = win.Width()
 	winHeight = win.Height()
 
-	win.EventLoop()
+	win.Exec()
 	winPosX = win.PosX()
 	winPosY = win.PosY()
 	winWidth = win.Width()

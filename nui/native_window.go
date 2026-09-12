@@ -121,8 +121,3 @@ func (c *nativeWindow) OnCloseRequest(f func() bool) {
 func (c *nativeWindow) OnTimer(f func()) {
 	c.onTimer = f
 }
-
-func (c *nativeWindow) Exec() {
-	c.Show()
-	c.EventLoop()
-}

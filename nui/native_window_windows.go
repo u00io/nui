@@ -18,7 +18,7 @@ import (
 type windowId syscall.Handle
 
 // Guards app.windows: multiple windows each run their own goroutine/OS
-// thread and message loop (see EventLoop), so creating one window while
+// thread and message loop (see Exec), so creating one window while
 // another's wndProc looks up its handle is a real concurrent map access.
 var appWindowsMu sync.Mutex
 
@@ -36,14 +36,14 @@ type nativeWindowPlatform struct {
 	// thread's queue), so CreateWindowExW and the whole message loop must run
 	// on one dedicated, locked OS thread for the window's entire life.
 	// createWindow() spawns that thread and starts the pump on it right away
-	// (see pumpMessages); EventLoop(), whichever goroutine calls it (Exec,
+	// (see pumpMessages); Exec(), whichever goroutine calls it (Run,
 	// ShowModal's own goroutine, etc.), just waits on pumpDone. Without this,
 	// a second window's own PostQuitMessage could land on another window's
 	// (e.g. the main window's) thread and close the whole app instead of
 	// just itself.
 	//
 	// The pump must start immediately rather than wait for an explicit
-	// signal from EventLoop(): Win32 cross-thread calls (SendMessageW,
+	// signal from Exec(): Win32 cross-thread calls (SendMessageW,
 	// SetWindowText, ShowWindow, ...) are only ever delivered while the
 	// owning thread is blocked inside GetMessage/PeekMessage - a thread
 	// merely parked on a Go channel receive is invisible to that mechanism.
@@ -161,11 +161,11 @@ func (c *nativeWindow) Update() {
 	procUpdateWindow.Call(uintptr(c.hwnd))
 }
 
-// EventLoop blocks the calling goroutine until the window is closed. The
-// actual GetMessage/DispatchMessage pump always runs on the dedicated OS
-// thread that created c.hwnd (see nativeWindowPlatform) and is already
-// running by the time this is called - so this just waits for it to finish.
-func (c *nativeWindow) EventLoop() {
+// Exec blocks the calling goroutine until the window is closed. The actual
+// GetMessage/DispatchMessage pump always runs on the dedicated OS thread
+// that created c.hwnd (see nativeWindowPlatform) and is already running by
+// the time this is called - so this just waits for it to finish.
+func (c *nativeWindow) Exec() {
 	<-c.platform.pumpDone
 }
 
@@ -218,6 +218,8 @@ func (c *nativeWindow) ShowModal(parent Window) {
 		procSetWindowLongPtrW.Call(uintptr(c.hwnd), gwlHwndParentIndex(), hwndOwner)
 		procEnableWindow.Call(hwndOwner, 0)
 	}
+
+	c.Show()
 
 	go func() {
 		c.Exec()

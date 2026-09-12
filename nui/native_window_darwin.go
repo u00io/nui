@@ -20,7 +20,7 @@ import (
 )
 
 // Cocoa has one shared NSApplication run loop for the whole process; only the
-// first window to reach EventLoop() may start it.
+// first window to reach Exec() may start it.
 var eventLoopStarted int32
 
 // Darwin/Cocoa implementation; window chrome and bridges live in window.m.
@@ -139,11 +139,16 @@ func (c *nativeWindow) Update() {
 	C.UpdateWindow(C.int(c.hwnd))
 }
 
-func (c *nativeWindow) EventLoop() {
+// Exec waits for windows to close, but on Cocoa (unlike Linux/Windows) that
+// means running the ONE shared NSApplication run loop for the whole process,
+// not this specific window: the first caller starts and blocks on it for as
+// long as the app has any window open; later callers (other windows'
+// goroutines) just return immediately since that shared loop already
+// services their window too.
+func (c *nativeWindow) Exec() {
 	if atomic.CompareAndSwapInt32(&eventLoopStarted, 0, 1) {
 		C.RunEventLoop()
 	}
-	// else: the shared run loop is already active elsewhere and services this window too.
 }
 
 func (c *nativeWindow) Close() {
