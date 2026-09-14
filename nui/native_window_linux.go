@@ -738,6 +738,34 @@ func (c *nativeWindow) SetTitle(title string) {
 	cstr := C.CString(title)
 	defer C.free(unsafe.Pointer(cstr))
 	C.XStoreName(c.platform.display, c.platform.window, cstr)
+
+	// XStoreName sets WM_NAME as a Latin-1 STRING property, which garbles any
+	// non-ASCII title. Also set _NET_WM_NAME as UTF8_STRING so EWMH-compliant
+	// window managers and desktop environments display Unicode titles correctly.
+	nameUtf8String := C.CString("UTF8_STRING")
+	nameNetWmName := C.CString("_NET_WM_NAME")
+	defer C.free(unsafe.Pointer(nameUtf8String))
+	defer C.free(unsafe.Pointer(nameNetWmName))
+
+	utf8StringAtom := C.XInternAtom(c.platform.display, nameUtf8String, C.False)
+	netWmNameAtom := C.XInternAtom(c.platform.display, nameNetWmName, C.False)
+
+	titleBytes := []byte(title)
+	var dataPtr *C.uchar
+	if len(titleBytes) > 0 {
+		dataPtr = (*C.uchar)(unsafe.Pointer(&titleBytes[0]))
+	}
+
+	C.XChangeProperty(
+		c.platform.display,
+		c.platform.window,
+		netWmNameAtom,
+		utf8StringAtom,
+		8,
+		C.PropModeReplace,
+		dataPtr,
+		C.int(len(titleBytes)),
+	)
 }
 
 func (c *nativeWindow) Move(x, y int) {
