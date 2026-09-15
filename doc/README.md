@@ -1,6 +1,6 @@
 # nui documentation
 
-Native GUI library for Go. Windows, keyboard, mouse, 2D canvas. No external Go dependencies (cgo + OS native APIs).
+Native GUI library for Go. Windows, keyboard, mouse, 2D canvas. Talks to OS native APIs directly - cgo on macOS (Cocoa), [purego](https://github.com/ebitengine/purego) on Linux (Xlib, no cgo), plain `syscall` on Windows (Win32).
 
 ## Contents
 

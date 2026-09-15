@@ -20,30 +20,12 @@ import (
 	"github.com/u00io/nui/nuimouse"
 )
 
-/*
-#cgo LDFLAGS: -lX11
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/Xatom.h>
-#include <stdlib.h>
-#include <string.h>
-#include "ximage_helper.h"
-#include <locale.h>
-*/
-import "C"
-
-func init() {
-	C.setlocale(C.LC_ALL, C.CString(""))
-	// Required before any Xlib call once multiple windows run their event loops on separate goroutines.
-	C.XInitThreads()
-}
-
-type windowId C.Window
+type windowId uintptr
 
 type nativeWindowPlatform struct {
-	display *C.Display
-	window  C.Window
-	screen  C.int
+	display uintptr
+	window  uintptr
+	screen  int32
 
 	closed bool
 	// Set by Close() from any goroutine; only the owning Exec goroutine
@@ -59,15 +41,15 @@ type nativeWindowPlatform struct {
 	dtLastUpdateCalled time.Time
 	needUpdateInTimer  bool
 
-	wmProtocols    C.Atom
-	wmDeleteWindow C.Atom
+	wmProtocols    uintptr
+	wmDeleteWindow uintptr
 
 	prevSetPosX int
 	prevSetPosY int
 
-	netWMState              C.Atom
-	netWMStateMaximizedHorz C.Atom
-	netWMStateMaximizedVert C.Atom
+	netWMState              uintptr
+	netWMStateMaximizedHorz uintptr
+	netWMStateMaximizedVert uintptr
 
 	// Per-window paint surface, sized to the window's current dimensions.
 	canvasBuffer []byte
@@ -131,7 +113,7 @@ func init() {
 	hwnds = make(map[windowId]*nativeWindow)
 }
 
-func GetNativeWindowByHandle(hwnd C.Window) *nativeWindow {
+func GetNativeWindowByHandle(hwnd uintptr) *nativeWindow {
 	hwndsMu.Lock()
 	defer hwndsMu.Unlock()
 	if w, ok := hwnds[windowId(hwnd)]; ok {
@@ -181,37 +163,34 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.platform.prevSetPosX = -1
 	c.platform.prevSetPosY = -1
 
-	c.platform.display = C.XOpenDisplay(nil)
-	if c.platform.display == nil {
+	c.platform.display = xOpenDisplay(0)
+	if c.platform.display == 0 {
 		panic("Unable to open X display")
 	}
-	//defer C.XCloseDisplay(c.display)
 
-	c.platform.screen = C.XDefaultScreen(c.platform.display)
+	c.platform.screen = xDefaultScreen(c.platform.display)
 
-	attrs := C.XSetWindowAttributes{}
-	attrs.background_pixmap = C.None
+	attrs := xSetWindowAttributes{}
+	attrs.BackgroundPixmap = xNone
 
-	mask := C.CWBackPixmap
-
-	c.platform.window = C.XCreateWindow(
+	c.platform.window = xCreateWindow(
 		c.platform.display,
-		C.XRootWindow(c.platform.display, c.platform.screen),
+		xRootWindow(c.platform.display, c.platform.screen),
 		100, 100, // x, y
-		C.uint(width), C.uint(height), // width, height
-		1,                // border width
-		C.CopyFromParent, // depth
-		C.InputOutput,    // class
-		nil,              // visual
-		C.ulong(mask),    // valuemask
-		&attrs,           // attributes pointer (не значение!)
+		uint32(width), uint32(height), // width, height
+		1,               // border width
+		xCopyFromParent, // depth
+		xInputOutput,    // class
+		0,               // visual
+		xCWBackPixmap,   // valuemask
+		unsafe.Pointer(&attrs),
 	)
 
-	C.XSelectInput(c.platform.display, c.platform.window, C.ExposureMask|C.PropertyChangeMask|C.StructureNotifyMask|C.KeyPressMask|C.KeyReleaseMask|C.EnterWindowMask|C.LeaveWindowMask|C.ButtonPressMask|C.ButtonReleaseMask|C.PointerMotionMask)
+	xSelectInput(c.platform.display, c.platform.window, xExposureMask|xPropertyChangeMask|xStructureNotifyMask|xKeyPressMask|xKeyReleaseMask|xEnterWindowMask|xLeaveWindowMask|xButtonPressMask|xButtonReleaseMask|xPointerMotionMask)
 
-	var getAttr C.XWindowAttributes
-	C.XGetWindowAttributes(c.platform.display, c.platform.window, &getAttr)
-	c.windowWidth, c.windowHeight = int(getAttr.width), int(getAttr.height)
+	var getAttr xWindowAttributes
+	xGetWindowAttributes(c.platform.display, c.platform.window, unsafe.Pointer(&getAttr))
+	c.windowWidth, c.windowHeight = int(getAttr.Width), int(getAttr.Height)
 
 	// Store the window handle
 	hwndsMu.Lock()
@@ -231,33 +210,21 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 }
 
 func (c *nativeWindow) initCloseProtocol() {
-	display := (*C.Display)(c.platform.display)
-	window := C.Window(c.platform.window)
+	display := c.platform.display
+	window := c.platform.window
 
-	nameProtocols := C.CString("WM_PROTOCOLS")
-	nameDelete := C.CString("WM_DELETE_WINDOW")
-	defer C.free(unsafe.Pointer(nameProtocols))
-	defer C.free(unsafe.Pointer(nameDelete))
+	c.platform.wmProtocols = xInternAtom(display, "WM_PROTOCOLS", xFalse)
+	c.platform.wmDeleteWindow = xInternAtom(display, "WM_DELETE_WINDOW", xFalse)
 
-	c.platform.wmProtocols = C.XInternAtom(display, nameProtocols, C.False)
-	c.platform.wmDeleteWindow = C.XInternAtom(display, nameDelete, C.False)
-
-	C.XSetWMProtocols(display, window, &c.platform.wmDeleteWindow, 1)
+	xSetWMProtocols(display, window, unsafe.Pointer(&c.platform.wmDeleteWindow), 1)
 }
 
 func (c *nativeWindow) initWindowStateAtoms() {
 	display := c.platform.display
 
-	nameState := C.CString("_NET_WM_STATE")
-	nameMaxH := C.CString("_NET_WM_STATE_MAXIMIZED_HORZ")
-	nameMaxV := C.CString("_NET_WM_STATE_MAXIMIZED_VERT")
-	defer C.free(unsafe.Pointer(nameState))
-	defer C.free(unsafe.Pointer(nameMaxH))
-	defer C.free(unsafe.Pointer(nameMaxV))
-
-	c.platform.netWMState = C.XInternAtom(display, nameState, C.False)
-	c.platform.netWMStateMaximizedHorz = C.XInternAtom(display, nameMaxH, C.False)
-	c.platform.netWMStateMaximizedVert = C.XInternAtom(display, nameMaxV, C.False)
+	c.platform.netWMState = xInternAtom(display, "_NET_WM_STATE", xFalse)
+	c.platform.netWMStateMaximizedHorz = xInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", xFalse)
+	c.platform.netWMStateMaximizedVert = xInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", xFalse)
 }
 
 // Show maps the window and, the first time it's called, starts this
@@ -271,8 +238,8 @@ func (c *nativeWindow) Show() {
 	c.platform.pumpStarted = true
 	c.platform.pumpDone = make(chan struct{})
 
-	C.XMapWindow(c.platform.display, c.platform.window)
-	C.XFlush(c.platform.display)
+	xMapWindow(c.platform.display, c.platform.window)
+	xFlush(c.platform.display)
 
 	go func() {
 		c.pumpEvents()
@@ -290,25 +257,15 @@ func (c *nativeWindow) Update() {
 	}
 	c.platform.dtLastUpdateCalled = time.Now()
 
-	C.XClearArea(
+	xClearArea(
 		c.platform.display,
 		c.platform.window,
 		0, 0,
 		0, 0,
 		1, // last parameter is `exposures`: if True — generate Expose event
 	)
-	C.XFlush(c.platform.display)
-	//C.XClearWindow(c.display, c.window)
+	xFlush(c.platform.display)
 }
-
-func eventType(event C.XEvent) int {
-	return int(*(*C.int)(unsafe.Pointer(&event)))
-}
-
-/*var posX C.uint
-var posY C.uint
-var width C.uint
-var height C.uint*/
 
 // Exec blocks the calling goroutine until this window closes. The actual
 // X11 event pump runs on the goroutine Show() started (idempotent, so
@@ -332,9 +289,9 @@ func (c *nativeWindow) pumpEvents() {
 			break
 		}
 
-		for !c.platform.closed && C.XPending(c.platform.display) > 0 {
-			var event C.XEvent
-			C.XNextEvent(c.platform.display, &event)
+		for !c.platform.closed && xPending(c.platform.display) > 0 {
+			var event xEvent
+			xNextEvent(c.platform.display, unsafe.Pointer(&event))
 
 			if c.platform.closed {
 				break
@@ -358,15 +315,15 @@ func (c *nativeWindow) pumpEvents() {
 			// app callbacks. Once the dialog closes, doClose() drops
 			// modalChildCount back to 0 and these events flow again.
 			if c.inputBlocked() {
-				switch eventType(event) {
-				case C.KeyPress, C.KeyRelease, C.ButtonPress, C.ButtonRelease, C.MotionNotify, C.EnterNotify, C.LeaveNotify:
+				switch event.eventType() {
+				case xKeyPress, xKeyRelease, xButtonPress, xButtonRelease, xMotionNotify, xEnterNotify, xLeaveNotify:
 					continue
 				}
 			}
 
-			switch eventType(event) {
+			switch event.eventType() {
 
-			case C.Expose:
+			case xExpose:
 				{
 					{
 						dtBeginPaint := time.Now()
@@ -408,13 +365,13 @@ func (c *nativeWindow) pumpEvents() {
 					}
 
 				}
-			case C.MapNotify:
-				mapEvent := (*C.XMapEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Window became visible. Window ID: %d\n", mapEvent.window)
+			case xMapNotify:
+				mapEvent := (*xMapEvent)(unsafe.Pointer(&event))
+				fmt.Printf("Window became visible. Window ID: %d\n", mapEvent.Window)
 
-			case C.UnmapNotify:
-				unmapEvent := (*C.XUnmapEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Window was hidden. Window ID: %d\n", unmapEvent.window)
+			case xUnmapNotify:
+				unmapEvent := (*xUnmapEvent)(unsafe.Pointer(&event))
+				fmt.Printf("Window was hidden. Window ID: %d\n", unmapEvent.Window)
 
 				// The WM just iconified us (titlebar button, window menu,
 				// keyboard shortcut - ICCCM has the client unmap itself to go
@@ -425,43 +382,41 @@ func (c *nativeWindow) pumpEvents() {
 				// on every theme, undo the effect directly: re-map right
 				// away instead of trying to prevent the click itself.
 				if !c.platform.allowMinimize && !c.platform.closed && atomic.LoadInt32(&c.platform.closeRequested) == 0 {
-					C.XMapWindow(c.platform.display, c.platform.window)
-					C.XFlush(c.platform.display)
+					xMapWindow(c.platform.display, c.platform.window)
+					xFlush(c.platform.display)
 				}
 
-			case C.DestroyNotify:
-				destroyEvent := (*C.XDestroyWindowEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Window was destroyed. Window ID: %d\n", destroyEvent.window)
+			case xDestroyNotify:
+				destroyEvent := (*xDestroyWindowEvent)(unsafe.Pointer(&event))
+				fmt.Printf("Window was destroyed. Window ID: %d\n", destroyEvent.Window)
 
-			case C.ReparentNotify:
-				reparentEvent := (*C.XReparentEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Window changed parent. Window ID: %d, New Parent ID: %d\n", reparentEvent.window, reparentEvent.parent)
-			case C.ResizeRequest:
-				resizeEvent := (*C.XResizeRequestEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Resize request received: Width=%d, Height=%d\n", resizeEvent.width, resizeEvent.height)
+			case xReparentNotify:
+				reparentEvent := (*xReparentEvent)(unsafe.Pointer(&event))
+				fmt.Printf("Window changed parent. Window ID: %d, New Parent ID: %d\n", reparentEvent.Window, reparentEvent.Parent)
+			case xResizeRequest:
+				resizeEvent := (*xResizeRequestEvent)(unsafe.Pointer(&event))
+				fmt.Printf("Resize request received: Width=%d, Height=%d\n", resizeEvent.Width, resizeEvent.Height)
 
-				c.windowWidth = int(resizeEvent.width)
-				c.windowHeight = int(resizeEvent.height)
+				c.windowWidth = int(resizeEvent.Width)
+				c.windowHeight = int(resizeEvent.Height)
 
-				//c.Update()
-
-			case C.ConfigureNotify:
-				configureEvent := (*C.XConfigureEvent)(unsafe.Pointer(&event))
+			case xConfigureNotify:
+				configureEvent := (*xConfigureEvent)(unsafe.Pointer(&event))
 
 				prevWindowPosX := c.windowPosX
 				prevWindowPosY := c.windowPosY
 
 				c.updateWindowPos()
 
-				if configureEvent.send_event == 1 && (c.windowPosX != prevWindowPosX || c.windowPosY != prevWindowPosY) {
+				if configureEvent.SendEvent == 1 && (c.windowPosX != prevWindowPosX || c.windowPosY != prevWindowPosY) {
 					if c.onMove != nil {
 						c.onMove(c.windowPosX, c.windowPosY)
 					}
 				}
 
-				if configureEvent.send_event == 0 && (c.windowWidth != int(configureEvent.width) || c.windowHeight != int(configureEvent.height)) {
-					c.windowWidth = int(configureEvent.width)
-					c.windowHeight = int(configureEvent.height)
+				if configureEvent.SendEvent == 0 && (c.windowWidth != int(configureEvent.Width) || c.windowHeight != int(configureEvent.Height)) {
+					c.windowWidth = int(configureEvent.Width)
+					c.windowHeight = int(configureEvent.Height)
 					if c.onResize != nil {
 						c.onResize(c.windowWidth, c.windowHeight)
 					}
@@ -469,11 +424,11 @@ func (c *nativeWindow) pumpEvents() {
 
 				c.Update()
 
-			case C.KeyPress:
-				keyEvent := (*C.XKeyEvent)(unsafe.Pointer(&event))
-				keySym := C.XLookupKeysym((*C.XKeyEvent)(unsafe.Pointer(&event)), 0)
-				fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
-				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
+			case xKeyPress:
+				keyEvent := (*xKeyEvent)(unsafe.Pointer(&event))
+				keySym := xLookupKeysym(unsafe.Pointer(&event), 0)
+				fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.Keycode)
+				key := ConvertLinuxKeyToNuiKey(int(keyEvent.Keycode))
 				processed := false
 				if c.onKeyDown != nil {
 					processed = c.onKeyDown(key, c.getModifierState())
@@ -487,21 +442,19 @@ func (c *nativeWindow) pumpEvents() {
 					break
 				}
 
-				var buf [32]C.char
-				var sym C.KeySym
+				var buf [32]byte
+				var sym uintptr
 
-				xkey := (*C.XKeyEvent)(unsafe.Pointer(&event))
-
-				n := C.XLookupString(
-					xkey,
-					&buf[0],
-					C.int(len(buf)),
-					&sym,
-					nil,
+				n := xLookupString(
+					unsafe.Pointer(&event),
+					unsafe.Pointer(&buf[0]),
+					int32(len(buf)),
+					unsafe.Pointer(&sym),
+					0,
 				)
 
 				if n > 0 {
-					text := C.GoStringN(&buf[0], n)
+					text := string(buf[:n])
 					fmt.Printf("Text input: %s\n", text)
 
 					firstRune, _ := utf8.DecodeRuneInString(text)
@@ -512,39 +465,38 @@ func (c *nativeWindow) pumpEvents() {
 					}
 				}
 
-			case C.KeyRelease:
-				keyEvent := (*C.XKeyEvent)(unsafe.Pointer(&event))
-				keySym := C.XLookupKeysym(keyEvent, 0)
-				fmt.Printf("Key released: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
-				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
+			case xKeyRelease:
+				keyEvent := (*xKeyEvent)(unsafe.Pointer(&event))
+				keySym := xLookupKeysym(unsafe.Pointer(&event), 0)
+				fmt.Printf("Key released: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.Keycode)
+				key := ConvertLinuxKeyToNuiKey(int(keyEvent.Keycode))
 				if c.onKeyUp != nil {
 					c.onKeyUp(key, c.getModifierState())
 				}
 
-			case C.EnterNotify:
+			case xEnterNotify:
 				if c.onMouseEnter != nil {
 					c.onMouseEnter()
 				}
 
-			case C.LeaveNotify:
+			case xLeaveNotify:
 				if c.onMouseLeave != nil {
 					c.onMouseLeave()
 				}
 
-			case C.MotionNotify:
-				motionEvent := (*C.XMotionEvent)(unsafe.Pointer(&event))
+			case xMotionNotify:
+				motionEvent := (*xMotionEvent)(unsafe.Pointer(&event))
 				if c.onMouseMove != nil {
-					c.onMouseMove(int(motionEvent.x), int(motionEvent.y))
+					c.onMouseMove(int(motionEvent.X), int(motionEvent.Y))
 				}
 
-			case C.ButtonPress:
-				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
-				//fmt.Printf("Mouse button %d pressed at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
+			case xButtonPress:
+				buttonEvent := (*xButtonEvent)(unsafe.Pointer(&event))
 
-				x := int(buttonEvent.x)
-				y := int(buttonEvent.y)
+				x := int(buttonEvent.X)
+				y := int(buttonEvent.Y)
 
-				switch buttonEvent.button {
+				switch buttonEvent.Button {
 				case 1:
 					if c.onMouseButtonDown != nil {
 						c.onMouseButtonDown(nuimouse.MouseButtonLeft, x, y)
@@ -577,17 +529,17 @@ func (c *nativeWindow) pumpEvents() {
 
 				dblClickDetected := false
 				// Double click detection
-				if buttonEvent.button == 1 || buttonEvent.button == 2 || buttonEvent.button == 3 {
-					if c.lastMouseButton == nuimouse.MouseButton(buttonEvent.button) {
+				if buttonEvent.Button == 1 || buttonEvent.Button == 2 || buttonEvent.Button == 3 {
+					if c.lastMouseButton == nuimouse.MouseButton(buttonEvent.Button) {
 						timeSinceLastClick := time.Since(c.lastMouseDownTime)
-						distanceX := int(buttonEvent.x) - c.lastMouseDownX
-						distanceY := int(buttonEvent.y) - c.lastMouseDownY
+						distanceX := int(buttonEvent.X) - c.lastMouseDownX
+						distanceY := int(buttonEvent.Y) - c.lastMouseDownY
 						distanceSquared := distanceX*distanceX + distanceY*distanceY
 						if timeSinceLastClick < 500*time.Millisecond && distanceSquared < 25 {
 							// Detected double click
 							if c.onMouseButtonDblClick != nil {
 								var btn nuimouse.MouseButton
-								switch buttonEvent.button {
+								switch buttonEvent.Button {
 								case 1:
 									btn = nuimouse.MouseButtonLeft
 								case 2:
@@ -597,7 +549,6 @@ func (c *nativeWindow) pumpEvents() {
 								}
 								c.onMouseButtonDblClick(btn, x, y)
 							}
-							// fmt.Println("dbl click detected")
 							dblClickDetected = true
 						}
 					}
@@ -605,9 +556,9 @@ func (c *nativeWindow) pumpEvents() {
 
 				if !dblClickDetected {
 					// Update last mouse down info
-					c.lastMouseDownX = int(buttonEvent.x)
-					c.lastMouseDownY = int(buttonEvent.y)
-					c.lastMouseButton = nuimouse.MouseButton(buttonEvent.button)
+					c.lastMouseDownX = int(buttonEvent.X)
+					c.lastMouseDownY = int(buttonEvent.Y)
+					c.lastMouseButton = nuimouse.MouseButton(buttonEvent.Button)
 					c.lastMouseDownTime = time.Now()
 				} else {
 					// Reset last mouse down info to avoid triple click detection
@@ -617,14 +568,13 @@ func (c *nativeWindow) pumpEvents() {
 					c.lastMouseDownTime = time.Time{}
 				}
 
-			case C.ButtonRelease:
-				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
-				//fmt.Printf("Mouse button %d released at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
+			case xButtonRelease:
+				buttonEvent := (*xButtonEvent)(unsafe.Pointer(&event))
 
-				x := int(buttonEvent.x)
-				y := int(buttonEvent.y)
+				x := int(buttonEvent.X)
+				y := int(buttonEvent.Y)
 
-				switch buttonEvent.button {
+				switch buttonEvent.Button {
 				case 1:
 					if c.onMouseButtonUp != nil {
 						c.onMouseButtonUp(nuimouse.MouseButtonLeft, x, y)
@@ -639,12 +589,12 @@ func (c *nativeWindow) pumpEvents() {
 					}
 				}
 
-			case C.ClientMessage:
-				xclient := (*C.XClientMessageEvent)(unsafe.Pointer(&event))
-				data0 := *(*C.long)(unsafe.Pointer(&xclient.data[0]))
+			case xClientMessage:
+				xclient := (*xClientMessageEvent)(unsafe.Pointer(&event))
+				data0 := xclient.dataLong(0)
 
-				if xclient.message_type == c.platform.wmProtocols &&
-					C.Atom(data0) == c.platform.wmDeleteWindow {
+				if xclient.MessageType == c.platform.wmProtocols &&
+					uintptr(data0) == c.platform.wmDeleteWindow {
 
 					if c.inputBlocked() {
 						// A modal dialog owned by this window is open - refuse
@@ -665,16 +615,16 @@ func (c *nativeWindow) pumpEvents() {
 					}
 				}
 
-			case C.PropertyNotify:
-				propEvent := (*C.XPropertyEvent)(unsafe.Pointer(&event))
-				if propEvent.atom == c.platform.netWMState && !c.platform.allowMaximize && c.IsMaximized() {
+			case xPropertyNotify:
+				propEvent := (*xPropertyEvent)(unsafe.Pointer(&event))
+				if propEvent.Atom == c.platform.netWMState && !c.platform.allowMaximize && c.IsMaximized() {
 					// Same idea as the UnmapNotify case above: the WM just
 					// maximized us (button, window menu, double-click on the
 					// titlebar, drag-to-edge, ...) despite
 					// SetAllowMaximize(false), so ask it to un-maximize
 					// again right away rather than relying on it to have
 					// refused the click in the first place.
-					C.restoreWindow(c.platform.display, c.platform.window)
+					restoreWindowX(c.platform.display, c.platform.window)
 				}
 			}
 
@@ -684,7 +634,6 @@ func (c *nativeWindow) pumpEvents() {
 			select {
 			case <-ticker.C:
 				{
-					//fmt.Println("Timer event: 10ms tick")
 					if c.platform.needUpdateInTimer {
 						c.Update()
 						c.platform.needUpdateInTimer = false
@@ -720,8 +669,8 @@ func (c *nativeWindow) Close() {
 // doClose performs the actual Xlib teardown. Must only be called from the
 // window's own Exec goroutine.
 func (c *nativeWindow) doClose() {
-	C.XDestroyWindow(c.platform.display, c.platform.window)
-	C.XCloseDisplay(c.platform.display)
+	xDestroyWindow(c.platform.display, c.platform.window)
+	xCloseDisplay(c.platform.display)
 	c.platform.closed = true
 
 	if c.platform.modalParent != nil {
@@ -735,36 +684,29 @@ func (c *nativeWindow) doClose() {
 }
 
 func (c *nativeWindow) SetTitle(title string) {
-	cstr := C.CString(title)
-	defer C.free(unsafe.Pointer(cstr))
-	C.XStoreName(c.platform.display, c.platform.window, cstr)
+	xStoreName(c.platform.display, c.platform.window, title)
 
 	// XStoreName sets WM_NAME as a Latin-1 STRING property, which garbles any
 	// non-ASCII title. Also set _NET_WM_NAME as UTF8_STRING so EWMH-compliant
 	// window managers and desktop environments display Unicode titles correctly.
-	nameUtf8String := C.CString("UTF8_STRING")
-	nameNetWmName := C.CString("_NET_WM_NAME")
-	defer C.free(unsafe.Pointer(nameUtf8String))
-	defer C.free(unsafe.Pointer(nameNetWmName))
-
-	utf8StringAtom := C.XInternAtom(c.platform.display, nameUtf8String, C.False)
-	netWmNameAtom := C.XInternAtom(c.platform.display, nameNetWmName, C.False)
+	utf8StringAtom := xInternAtom(c.platform.display, "UTF8_STRING", xFalse)
+	netWmNameAtom := xInternAtom(c.platform.display, "_NET_WM_NAME", xFalse)
 
 	titleBytes := []byte(title)
-	var dataPtr *C.uchar
+	var dataPtr unsafe.Pointer
 	if len(titleBytes) > 0 {
-		dataPtr = (*C.uchar)(unsafe.Pointer(&titleBytes[0]))
+		dataPtr = unsafe.Pointer(&titleBytes[0])
 	}
 
-	C.XChangeProperty(
+	xChangeProperty(
 		c.platform.display,
 		c.platform.window,
 		netWmNameAtom,
 		utf8StringAtom,
 		8,
-		C.PropModeReplace,
+		xPropModeReplace,
 		dataPtr,
-		C.int(len(titleBytes)),
+		int32(len(titleBytes)),
 	)
 }
 
@@ -776,18 +718,16 @@ func (c *nativeWindow) Move(x, y int) {
 		x -= left
 		y -= top
 	}
-	//fmt.Println("LINUX MOVE to:", c.platform.prevSetPosX, c.platform.prevSetPosY)
-	//fmt.Println("LINUX MOVE top:", top)
 
-	C.XMoveWindow(c.platform.display, c.platform.window, C.int(x), C.int(y))
+	xMoveWindow(c.platform.display, c.platform.window, int32(x), int32(y))
 }
 
 func getScreenSize() (width, height int) {
-	display := C.XOpenDisplay(nil)
-	screen := C.XDefaultScreen(display)
-	width = int(C.XDisplayWidth(display, screen))
-	height = int(C.XDisplayHeight(display, screen))
-	C.XCloseDisplay(display)
+	display := xOpenDisplay(0)
+	screen := xDefaultScreen(display)
+	width = int(xDisplayWidth(display, screen))
+	height = int(xDisplayHeight(display, screen))
+	xCloseDisplay(display)
 	return
 }
 
@@ -800,7 +740,7 @@ func (c *nativeWindow) MoveToCenterOfScreen() {
 }
 
 func (c *nativeWindow) Resize(width, height int) {
-	C.XResizeWindow(c.platform.display, c.platform.window, C.uint(width), C.uint(height))
+	xResizeWindow(c.platform.display, c.platform.window, uint32(width), uint32(height))
 }
 
 func (c *nativeWindow) PosX() int {
@@ -831,41 +771,41 @@ func (c *nativeWindow) IsMaximized() bool {
 	display := c.platform.display
 	window := c.platform.window
 
-	var actualType C.Atom
-	var actualFormat C.int
-	var nitems C.ulong
-	var bytesAfter C.ulong
-	var prop *C.uchar
+	var actualType uintptr
+	var actualFormat int32
+	var nitems uintptr
+	var bytesAfter uintptr
+	var prop unsafe.Pointer
 
 	if c.platform.closed {
 		return false
 	}
 
-	status := C.XGetWindowProperty(
+	status := xGetWindowProperty(
 		display,
 		window,
 		c.platform.netWMState,
 		0,
 		1024,
-		C.False,
-		C.XA_ATOM,
-		&actualType,
-		&actualFormat,
-		&nitems,
-		&bytesAfter,
-		&prop,
+		xFalse,
+		xXAAtom,
+		unsafe.Pointer(&actualType),
+		unsafe.Pointer(&actualFormat),
+		unsafe.Pointer(&nitems),
+		unsafe.Pointer(&bytesAfter),
+		unsafe.Pointer(&prop),
 	)
 
-	if status != C.Success || prop == nil {
+	if status != xSuccess || prop == nil {
 		return false
 	}
-	defer C.XFree(unsafe.Pointer(prop))
+	defer xFree(prop)
 
-	if actualType != C.XA_ATOM || actualFormat != 32 || nitems == 0 {
+	if actualType != xXAAtom || actualFormat != 32 || nitems == 0 {
 		return false
 	}
 
-	atoms := unsafe.Slice((*C.Atom)(unsafe.Pointer(prop)), int(nitems))
+	atoms := unsafe.Slice((*uintptr)(prop), int(nitems))
 
 	hasHorz := false
 	hasVert := false
@@ -917,7 +857,7 @@ func (c *nativeWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
 }
 
 func (c *nativeWindow) changeMouseCursor(mouseCursor nuimouse.MouseCursor) bool {
-	var cursorShape uint
+	var cursorShape uint32
 
 	const (
 		CursorArrow = 132
@@ -945,18 +885,18 @@ func (c *nativeWindow) changeMouseCursor(mouseCursor nuimouse.MouseCursor) bool 
 		cursorShape = CursorIBeam
 	}
 
-	cursor := C.XCreateFontCursor(c.platform.display, C.uint(cursorShape))
-	C.XDefineCursor(c.platform.display, c.platform.window, cursor)
-	C.XFlush(c.platform.display)
+	cursor := xCreateFontCursor(c.platform.display, cursorShape)
+	xDefineCursor(c.platform.display, c.platform.window, cursor)
+	xFlush(c.platform.display)
 	return true
 }
 
 func (c *nativeWindow) MinimizeWindow() {
-	C.minimizeWindow(c.platform.display, c.platform.window)
+	minimizeWindowX(c.platform.display, c.platform.window)
 }
 
 func (c *nativeWindow) MaximizeWindow() {
-	C.maximizeWindow(c.platform.display, c.platform.window)
+	maximizeWindowX(c.platform.display, c.platform.window)
 }
 
 // SetAllowMinimize shows or hides the titlebar's minimize button via
@@ -974,14 +914,7 @@ func (c *nativeWindow) SetAllowMaximize(allow bool) {
 }
 
 func (c *nativeWindow) applyWindowDecorations() {
-	allowMin, allowMax := C.int(0), C.int(0)
-	if c.platform.allowMinimize {
-		allowMin = 1
-	}
-	if c.platform.allowMaximize {
-		allowMax = 1
-	}
-	C.setWindowDecorations(c.platform.display, c.platform.window, allowMin, allowMax)
+	setWindowDecorationsX(c.platform.display, c.platform.window, c.platform.allowMinimize, c.platform.allowMaximize)
 }
 
 // ShowModal marks the window as a modal dialog owned by parent (WM_TRANSIENT_FOR +
@@ -1000,7 +933,7 @@ func (c *nativeWindow) ShowModal(parent Window) {
 	if p, ok := parent.(*nativeWindow); ok && p != nil {
 		c.platform.modalParent = p
 		atomic.AddInt32(&p.platform.modalChildCount, 1)
-		C.setWindowModal(c.platform.display, c.platform.window, p.platform.window)
+		setWindowModalX(c.platform.display, c.platform.window, p.platform.window)
 	}
 }
 
@@ -1016,9 +949,9 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 
 	// _NET_WM_ICON: [width, height, pixels...]
 	dataLen := 2 + width*height
-	data := make([]C.ulong, dataLen)
-	data[0] = C.ulong(width)
-	data[1] = C.ulong(height)
+	data := make([]uintptr, dataLen)
+	data[0] = uintptr(width)
+	data[1] = uintptr(height)
 
 	i := 2
 	for y := 0; y < height; y++ {
@@ -1030,28 +963,26 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 			a := icon.Pix[offset+3]
 
 			argb := (uint32(a) << 24) | (uint32(r) << 16) | (uint32(g) << 8) | uint32(b)
-			data[i] = C.ulong(argb)
+			data[i] = uintptr(argb)
 			i++
 		}
 	}
 
-	atom := C.XInternAtom(c.platform.display, C.CString("_NET_WM_ICON"), C.False)
-	typ := C.Atom(C.XA_CARDINAL)
-	format := 32
+	atom := xInternAtom(c.platform.display, "_NET_WM_ICON", xFalse)
 
-	C.XChangeProperty(
+	xChangeProperty(
 		c.platform.display,
 		c.platform.window,
 		atom,
-		typ,
-		C.int(format),
-		C.PropModeReplace,
-		(*C.uchar)(unsafe.Pointer(&data[0])),
-		C.int(len(data)),
+		xXACardinal,
+		32,
+		xPropModeReplace,
+		unsafe.Pointer(&data[0]),
+		int32(len(data)),
 	)
 }
 
-func (c *nativeWindow) drawImageRGBA(display *C.Display, window C.Window, img image.Image) {
+func (c *nativeWindow) drawImageRGBA(display uintptr, window uintptr, img image.Image) {
 	width := c.windowWidth
 	height := c.windowHeight
 
@@ -1065,73 +996,59 @@ func (c *nativeWindow) drawImageRGBA(display *C.Display, window C.Window, img im
 		rgba[i*4], rgba[i*4+2] = rgba[i*4+2], rgba[i*4]
 	}
 
-	cBuffer := C.malloc(C.size_t(dataSize))
-	C.memcpy(cBuffer, unsafe.Pointer(&rgba[0]), C.size_t(dataSize))
+	// XDestroyImage (via destroyXImage below) frees this buffer through
+	// libX11's own free(), so it has to come from the same libc malloc, not
+	// Go's allocator.
+	cBuffer := libcMalloc(uintptr(dataSize))
+	libcMemcpy(cBuffer, unsafe.Pointer(&rgba[0]), uintptr(dataSize))
 
-	ximage := C.XCreateImage(
+	ximage := xCreateImage(
 		display,
-		C.XDefaultVisual(display, C.XDefaultScreen(display)),
+		xDefaultVisual(display, xDefaultScreen(display)),
 		24,
-		C.ZPixmap,
+		xZPixmap,
 		0,
-		(*C.char)(cBuffer),
-		C.uint(width),
-		C.uint(height),
+		cBuffer,
+		uint32(width),
+		uint32(height),
 		32,
 		0,
 	)
 
-	//C.DestroyXImage(ximage) // TODO:
+	gc := xCreateGC(display, window, 0, 0)
+	defer xFreeGC(display, gc)
 
-	gc := C.XCreateGC(display, C.Drawable(window), 0, nil)
-	defer C.XFreeGC(display, gc) // TODO:
+	xPutImage(display, window, gc, ximage, 0, 0, 0, 0, uint32(width), uint32(height))
 
-	C.XPutImage(display, C.Drawable(window), gc, ximage, 0, 0, 0, 0, C.uint(width), C.uint(height))
-
-	C.destroy_ximage(ximage)
+	destroyXImage(ximage)
 }
-
-/*func drawBlue(display *C.Display, window C.Window, screen C.int) {
-	gc := C.XCreateGC(display, C.Drawable(window), 0, nil)
-	defer C.XFreeGC(display, gc)
-	colorName := C.CString("blue")
-	defer C.free(unsafe.Pointer(colorName))
-
-	var exactColor, screenColor C.XColor
-	C.XAllocNamedColor(display, C.XDefaultColormap(display, screen), colorName, &screenColor, &exactColor)
-
-	C.XSetForeground(display, gc, screenColor.pixel)
-
-	C.XFillRectangle(display, C.Drawable(window), gc, 0, 0, width/2, height/2)
-}
-*/
 
 func (c *nativeWindow) SystemHandle() any {
 	return nil
 }
 
 func (c *nativeWindow) getModifierState() nuikey.KeyModifiers {
-	display := (*C.Display)(c.platform.display)
-	window := (C.Window)(c.platform.window)
+	display := c.platform.display
+	window := c.platform.window
 
-	var rootRet, childRet C.Window
-	var rootX, rootY, winX, winY C.int
-	var mask C.uint
+	var rootRet, childRet uintptr
+	var rootX, rootY, winX, winY int32
+	var mask uint32
 
-	C.XQueryPointer(
+	xQueryPointer(
 		display,
 		window,
-		&rootRet,
-		&childRet,
-		&rootX, &rootY,
-		&winX, &winY,
-		&mask,
+		unsafe.Pointer(&rootRet),
+		unsafe.Pointer(&childRet),
+		unsafe.Pointer(&rootX), unsafe.Pointer(&rootY),
+		unsafe.Pointer(&winX), unsafe.Pointer(&winY),
+		unsafe.Pointer(&mask),
 	)
 
 	return nuikey.KeyModifiers{
-		Shift: (mask & C.ShiftMask) != 0,
-		Ctrl:  (mask & C.ControlMask) != 0,
-		Alt:   (mask & C.Mod1Mask) != 0,
+		Shift: (mask & xShiftMask) != 0,
+		Ctrl:  (mask & xControlMask) != 0,
+		Alt:   (mask & xMod1Mask) != 0,
 	}
 }
 
@@ -1139,46 +1056,43 @@ func (c *nativeWindow) getFrameExtents() (left, right, top, bottom int, ok bool)
 	display := c.platform.display
 	window := c.platform.window
 
-	name := C.CString("_NET_FRAME_EXTENTS")
-	defer C.free(unsafe.Pointer(name))
+	atom := xInternAtom(display, "_NET_FRAME_EXTENTS", xFalse)
 
-	atom := C.XInternAtom(display, name, C.False)
-
-	var actualType C.Atom
-	var actualFormat C.int
-	var nitems C.ulong
-	var bytesAfter C.ulong
-	var prop *C.uchar
+	var actualType uintptr
+	var actualFormat int32
+	var nitems uintptr
+	var bytesAfter uintptr
+	var prop unsafe.Pointer
 
 	if c.platform.closed {
 		return 0, 0, 0, 0, false
 	}
 
-	status := C.XGetWindowProperty(
+	status := xGetWindowProperty(
 		display,
 		window,
 		atom,
 		0,
 		4,
-		C.False,
-		C.XA_CARDINAL,
-		&actualType,
-		&actualFormat,
-		&nitems,
-		&bytesAfter,
-		&prop,
+		xFalse,
+		xXACardinal,
+		unsafe.Pointer(&actualType),
+		unsafe.Pointer(&actualFormat),
+		unsafe.Pointer(&nitems),
+		unsafe.Pointer(&bytesAfter),
+		unsafe.Pointer(&prop),
 	)
 
-	if status != C.Success || prop == nil {
+	if status != xSuccess || prop == nil {
 		return 0, 0, 0, 0, false
 	}
-	defer C.XFree(unsafe.Pointer(prop))
+	defer xFree(prop)
 
-	if actualType != C.XA_CARDINAL || actualFormat != 32 || nitems < 4 {
+	if actualType != xXACardinal || actualFormat != 32 || nitems < 4 {
 		return 0, 0, 0, 0, false
 	}
 
-	data := (*[4]C.ulong)(unsafe.Pointer(prop))
+	data := (*[4]uintptr)(prop)
 
 	left = int(data[0])
 	right = int(data[1])
@@ -1191,18 +1105,18 @@ func (c *nativeWindow) getFrameExtents() (left, right, top, bottom int, ok bool)
 func (c *nativeWindow) updateWindowPos() {
 	display := c.platform.display
 	window := c.platform.window
-	root := C.XRootWindow(display, c.platform.screen)
+	root := xRootWindow(display, c.platform.screen)
 
-	var x, y C.int
-	var child C.Window
+	var x, y int32
+	var child uintptr
 
-	if C.XTranslateCoordinates(
+	if xTranslateCoordinates(
 		display,
 		window,
 		root,
 		0, 0,
-		&x, &y,
-		&child,
+		unsafe.Pointer(&x), unsafe.Pointer(&y),
+		unsafe.Pointer(&child),
 	) == 0 {
 		return
 	}

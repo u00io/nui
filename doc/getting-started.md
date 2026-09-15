@@ -9,10 +9,11 @@ go get github.com/u00io/nui
 ## Build requirements
 
 ### Linux
-```
-export CGO_ENABLED=1
-sudo apt install gcc libx11-dev
-```
+No packages needed to build - the Linux backend talks to Xlib at runtime
+via [purego](https://github.com/ebitengine/purego), not cgo, so
+`GOOS=linux go build` also cross-compiles from macOS/Windows. `libX11.so`
+must be present on whatever machine *runs* the binary (true of virtually
+any Linux desktop, GNOME/KDE included, even under Wayland via XWayland).
 
 ### Windows
 ```

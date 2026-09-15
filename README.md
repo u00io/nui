@@ -14,10 +14,14 @@ Documentation: [doc/README.md](doc/README.md)
 - MacOS
 
 # Linux build
-- export CGO_ENABLED=1
-- sudo apt install gcc
-- sudo apt install -y libx11-dev
 - go build -o bin/nui ./main.go
+
+No C compiler or X11 headers needed to build (the Linux backend talks to
+Xlib at runtime via [purego](https://github.com/ebitengine/purego), not
+cgo), so this also cross-compiles from macOS/Windows with a plain
+`GOOS=linux go build`. `libX11.so` still has to be present on whatever
+machine actually runs the binary - true of virtually any Linux desktop
+(GNOME/KDE, even under Wayland via XWayland).
 
 # Windows build
 - go build -o bin/nui.exe -ldflags="-H=windowsgui"
