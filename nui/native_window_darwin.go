@@ -1,19 +1,11 @@
 package nui
 
-/*
-#cgo CFLAGS: -x objective-c
-#cgo LDFLAGS: -framework Cocoa -framework CoreGraphics
-#include <stdlib.h>
-#include "window.h"
-*/
-import "C"
 import (
 	"image"
 	"image/color"
 	"image/draw"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/u00io/nui/nuikey"
 	"github.com/u00io/nui/nuimouse"
@@ -23,7 +15,7 @@ import (
 // first window to reach Exec() may start it.
 var eventLoopStarted int32
 
-// Darwin/Cocoa implementation; window chrome and bridges live in window.m.
+// Darwin/Cocoa implementation; window chrome and bridges live in cocoa_darwin.go.
 
 type windowId int
 type nativeWindowPlatform struct {
@@ -100,7 +92,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
 
-	c.hwnd = windowId(C.InitWindow())
+	c.hwnd = initWindow()
 	// Register before Resize so ObjC-triggered go_on_resize reaches Go with a populated hwnds map.
 	hwnds[c.hwnd] = &c
 	if !mainWindowIDSet {
@@ -132,11 +124,11 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 }
 
 func (c *nativeWindow) Show() {
-	C.ShowWindow(C.int(c.hwnd))
+	showWindow(c.hwnd)
 }
 
 func (c *nativeWindow) Update() {
-	C.UpdateWindow(C.int(c.hwnd))
+	updateWindow(c.hwnd)
 }
 
 // Exec waits for windows to close, but on Cocoa (unlike Linux/Windows) that
@@ -147,32 +139,30 @@ func (c *nativeWindow) Update() {
 // services their window too.
 func (c *nativeWindow) Exec() {
 	if atomic.CompareAndSwapInt32(&eventLoopStarted, 0, 1) {
-		C.RunEventLoop()
+		runEventLoop()
 	}
 }
 
 func (c *nativeWindow) Close() {
-	C.CloseWindowById(C.int(c.hwnd))
+	closeWindowById(c.hwnd)
 }
 
 // ShowModal shows the window as an app-modal dialog. Unlike Linux/Windows this call
 // blocks until the dialog closes (required for reliable modal-on-modal nesting on
 // Cocoa); parent's timers/repaint keep running since they share the same run loop.
 func (c *nativeWindow) ShowModal(parent Window) {
-	parentID := C.int(-1)
+	parentID := windowId(-1)
 	if p, ok := parent.(*nativeWindow); ok && p != nil {
-		parentID = C.int(p.hwnd)
+		parentID = p.hwnd
 	}
-	C.ShowModalWindow(C.int(c.hwnd), parentID)
+	showModalWindow(c.hwnd, parentID)
 }
 
 ///////////////////////////////////////////////////
 // Window appearance
 
 func (c *nativeWindow) SetTitle(title string) {
-	cs := C.CString(title)
-	defer C.free(unsafe.Pointer(cs))
-	C.SetWindowTitle(C.int(c.hwnd), cs)
+	setWindowTitle(c.hwnd, title)
 }
 
 func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
@@ -183,11 +173,7 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 	rgba := image.NewRGBA(bounds)
 	draw.Draw(rgba, bounds, icon, bounds.Min, draw.Src)
 
-	C.SetAppIconFromRGBA(
-		(*C.char)(unsafe.Pointer(&rgba.Pix[0])),
-		C.int(width),
-		C.int(height),
-	)
+	setAppIconFromRGBA(rgba.Pix, width, height)
 }
 
 func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {
@@ -200,14 +186,13 @@ func (c *nativeWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
 	c.macSetMouseCursor(c.currentCursor)
 }
 
-// Maps nuimouse kinds to IDs consumed by window.m SetMacCursor.
+// Maps nuimouse kinds to IDs consumed by cocoa_darwin.go's setMacCursor.
 func (c *nativeWindow) macSetMouseCursor(cursor nuimouse.MouseCursor) {
 	if c.lastSetCursor == cursor {
 		return
 	}
 	c.lastSetCursor = cursor
-	var macCursor C.int
-	macCursor = 0
+	macCursor := 0
 	switch c.currentCursor {
 	case nuimouse.MouseCursorArrow:
 		macCursor = 1
@@ -220,14 +205,14 @@ func (c *nativeWindow) macSetMouseCursor(cursor nuimouse.MouseCursor) {
 	case nuimouse.MouseCursorIBeam:
 		macCursor = 5
 	}
-	C.SetMacCursor(macCursor)
+	setMacCursor(macCursor)
 }
 
 /////////////////////////////////////////////////////
 // Window position and size
 
 func (c *nativeWindow) Move(x, y int) {
-	C.SetWindowPosition(C.int(c.hwnd), C.int(x), C.int(y))
+	setWindowPosition(c.hwnd, x, y)
 }
 
 // Uses Size() client dimensions vs main screen frame (aligned with Windows centering heuristic).
@@ -240,34 +225,27 @@ func (c *nativeWindow) MoveToCenterOfScreen() {
 }
 
 func (c *nativeWindow) Resize(width, height int) {
-	C.SetWindowSize(C.int(c.hwnd), C.int(width), C.int(height)) // NSWindow setContentSize
+	setWindowSize(c.hwnd, width, height) // NSWindow setContentSize
 }
 
 func (c *nativeWindow) MinimizeWindow() {
-	C.MinimizeWindow(C.int(c.hwnd))
+	minimizeWindow(c.hwnd)
 }
 
 func (c *nativeWindow) MaximizeWindow() {
-	C.MaximizeWindow(C.int(c.hwnd))
+	maximizeWindow(c.hwnd)
 }
 
 // SetAllowMinimize shows or hides the titlebar's miniaturize button, e.g. for
 // dialog-style windows that shouldn't offer it.
 func (c *nativeWindow) SetAllowMinimize(allow bool) {
-	C.SetWindowAllowMinimize(C.int(c.hwnd), boolToCInt(allow))
+	setWindowAllowMinimize(c.hwnd, allow)
 }
 
 // SetAllowMaximize shows or hides the titlebar's zoom button, e.g. for
 // dialog-style windows that shouldn't offer it.
 func (c *nativeWindow) SetAllowMaximize(allow bool) {
-	C.SetWindowAllowMaximize(C.int(c.hwnd), boolToCInt(allow))
-}
-
-func boolToCInt(b bool) C.int {
-	if b {
-		return 1
-	}
-	return 0
+	setWindowAllowMaximize(c.hwnd, allow)
 }
 
 //////////////////////////////////////////////////

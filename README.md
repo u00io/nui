@@ -25,3 +25,12 @@ machine actually runs the binary - true of virtually any Linux desktop
 
 # Windows build
 - go build -o bin/nui.exe -ldflags="-H=windowsgui"
+
+# macOS build
+- go build -o bin/nui ./main.go
+
+No C compiler or Xcode command line tools needed to build (the macOS backend
+talks to Cocoa/AppKit at runtime via [purego](https://github.com/ebitengine/purego),
+not cgo), so this also cross-compiles from Linux/Windows with a plain
+`GOOS=darwin go build`. AppKit still has to be present on whatever machine
+actually runs the binary - true of every macOS install.

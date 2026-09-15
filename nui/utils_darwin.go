@@ -1,11 +1,8 @@
 package nui
 
-// Darwin: CGO callbacks from window.m plus Mac-specific input / size helpers.
+// Darwin: callbacks from cocoa_darwin.go's ObjC classes plus Mac-specific
+// input / size helpers. No cgo - callers are Go closures in the same binary.
 
-/*
-#include "window.h"
-*/
-import "C"
 import (
 	"image"
 	"image/color"
@@ -17,79 +14,68 @@ import (
 	"github.com/u00io/nui/nuimouse"
 )
 
-//export go_on_paint
-func go_on_paint(hwnd C.int, ptr unsafe.Pointer, width C.int, height C.int) {
-	// width/height come from drawRect drawable rect in window.m.
+func go_on_paint(hwnd windowId, ptr unsafe.Pointer, width int, height int) {
+	// width/height come from drawRect's drawable rect in cocoa_darwin.go.
 	img := &image.RGBA{
-		Pix:    unsafe.Slice((*uint8)(ptr), int(width*height*4)),
-		Stride: int(width) * 4,
-		Rect:   image.Rect(0, 0, int(width), int(height)),
+		Pix:    unsafe.Slice((*uint8)(ptr), width*height*4),
+		Stride: width * 4,
+		Rect:   image.Rect(0, 0, width, height),
 	}
 
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+	if win, ok := hwnds[hwnd]; ok {
 		win.windowPaint(img)
 	}
 }
 
-//export go_on_resize
-func go_on_resize(hwnd C.int, width C.int, height C.int) {
+func go_on_resize(hwnd windowId, width int, height int) {
 	// width/height: NSWindow.contentLayoutRect (client area)
-	if win, ok := hwnds[windowId(hwnd)]; ok {
-		win.windowResized(int(width), int(height))
+	if win, ok := hwnds[hwnd]; ok {
+		win.windowResized(width, height)
 	}
 }
 
-//export go_on_close_request
-func go_on_close_request(hwnd C.int) C.int {
-	win, ok := hwnds[windowId(hwnd)]
+func go_on_close_request(hwnd windowId) bool {
+	win, ok := hwnds[hwnd]
 	if !ok || win.onCloseRequest == nil {
-		return 1
+		return true
 	}
-	if win.onCloseRequest() {
-		return 1
-	}
-	return 0
+	return win.onCloseRequest()
 }
 
-//export go_on_window_will_close
-func go_on_window_will_close(hwnd C.int) {
-	delete(hwnds, windowId(hwnd))
-	if mainWindowIDSet && windowId(hwnd) == mainWindowID {
-		C.QuitApp()
+func go_on_window_will_close(hwnd windowId) {
+	delete(hwnds, hwnd)
+	if mainWindowIDSet && hwnd == mainWindowID {
+		quitApp()
 	}
 }
 
-//export go_on_key_down
-func go_on_key_down(hwnd C.int, code C.int) {
-	key := nuikey.Key(ConvertMacOSKeyToNuiKey(int(code)))
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_key_down(hwnd windowId, code int) {
+	key := nuikey.Key(ConvertMacOSKeyToNuiKey(code))
+	if win, ok := hwnds[hwnd]; ok {
 		win.windowKeyDown(key)
 	}
 }
 
-//export go_on_key_up
-func go_on_key_up(hwnd C.int, code C.int) {
-	key := nuikey.Key(ConvertMacOSKeyToNuiKey(int(code)))
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_key_up(hwnd windowId, code int) {
+	key := nuikey.Key(ConvertMacOSKeyToNuiKey(code))
+	if win, ok := hwnds[hwnd]; ok {
 		win.windowKeyUp(key)
 	}
 }
 
-//export go_on_modifier_change
-func go_on_modifier_change(hwnd C.int, shift, ctrl, alt, cmd, caps, num, fnKey C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
-		win.windowKeyModifiersChanged(shift != 0, ctrl != 0, alt != 0, cmd != 0, caps != 0, num != 0, fnKey != 0)
+func go_on_modifier_change(hwnd windowId, shift, ctrl, alt, cmd, caps, num, fnKey bool) {
+	if win, ok := hwnds[hwnd]; ok {
+		win.windowKeyModifiersChanged(shift, ctrl, alt, cmd, caps, num, fnKey)
 	}
 }
 
-//export go_on_char
-func go_on_char(hwnd C.int, codepoint C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_char(hwnd windowId, codepoint int) {
+	if win, ok := hwnds[hwnd]; ok {
 		win.windowChar(rune(codepoint))
 	}
 }
 
-func convertMacMouseButtons(button C.int) nuimouse.MouseButton {
+func convertMacMouseButtons(button int) nuimouse.MouseButton {
 	switch button {
 	case 0:
 		return nuimouse.MouseButtonLeft
@@ -101,82 +87,70 @@ func convertMacMouseButtons(button C.int) nuimouse.MouseButton {
 	return nuimouse.MouseButtonLeft
 }
 
-//export go_on_window_move
-func go_on_window_move(hwnd C.int, x C.int, y C.int) {
-	// x,Y: frame left and top-down Y from window.m (matches Move()).
-	if win, ok := hwnds[windowId(hwnd)]; ok {
-		win.windowMoved(int(x), int(y))
-	}
-
-}
-
-//export go_on_declare_draw_time
-func go_on_declare_draw_time(hwnd C.int, dt C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
-		win.windowDeclareDrawTime(int(dt))
+func go_on_window_move(hwnd windowId, x int, y int) {
+	// x,Y: frame left and top-down Y from cocoa_darwin.go (matches Move()).
+	if win, ok := hwnds[hwnd]; ok {
+		win.windowMoved(x, y)
 	}
 }
 
-//export go_on_mouse_down
-func go_on_mouse_down(hwnd C.int, button, x, y C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_declare_draw_time(hwnd windowId, dt int) {
+	if win, ok := hwnds[hwnd]; ok {
+		win.windowDeclareDrawTime(dt)
+	}
+}
+
+func go_on_mouse_down(hwnd windowId, button, x, y int) {
+	if win, ok := hwnds[hwnd]; ok {
 		if button >= 0 && button <= 2 {
-			win.windowMouseButtonDown(convertMacMouseButtons(button), int(x), int(y))
+			win.windowMouseButtonDown(convertMacMouseButtons(button), x, y)
 		}
 	}
 }
 
-//export go_on_mouse_up
-func go_on_mouse_up(hwnd C.int, button, x, y C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_mouse_up(hwnd windowId, button, x, y int) {
+	if win, ok := hwnds[hwnd]; ok {
 		if button >= 0 && button <= 2 {
-			win.windowMouseButtonUp(convertMacMouseButtons(button), int(x), int(y))
+			win.windowMouseButtonUp(convertMacMouseButtons(button), x, y)
 		}
 	}
 }
 
-//export go_on_mouse_move
-func go_on_mouse_move(hwnd C.int, x, y C.int) {
-	//fmt.Println("mouse move", int(x), int(y))
-	if win, ok := hwnds[windowId(hwnd)]; ok {
-		win.windowMouseMove(int(x), int(y))
+func go_on_mouse_move(hwnd windowId, x, y int) {
+	if win, ok := hwnds[hwnd]; ok {
+		win.windowMouseMove(x, y)
 		win.macSetMouseCursor(win.currentCursor)
 	}
 }
 
-//export go_on_mouse_scroll
-func go_on_mouse_scroll(hwnd C.int, deltaX C.float, deltaY C.float) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
-		win.windowMouseWheel(float64(deltaX), float64(deltaY))
+func go_on_mouse_scroll(hwnd windowId, deltaX float64, deltaY float64) {
+	if win, ok := hwnds[hwnd]; ok {
+		win.windowMouseWheel(deltaX, deltaY)
 	}
 }
 
-//export go_on_mouse_enter
-func go_on_mouse_enter(hwnd C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_mouse_enter(hwnd windowId) {
+	if win, ok := hwnds[hwnd]; ok {
 		win.windowMouseEnter()
 	}
 }
 
-//export go_on_mouse_leave
-func go_on_mouse_leave(hwnd C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_mouse_leave(hwnd windowId) {
+	if win, ok := hwnds[hwnd]; ok {
 		win.windowMouseLeave()
 	}
 }
 
-//export go_on_mouse_double_click
-func go_on_mouse_double_click(hwnd C.int, button, x, y C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_mouse_double_click(hwnd windowId, button, x, y int) {
+	if win, ok := hwnds[hwnd]; ok {
 		if button >= 0 && button <= 2 {
-			win.windowMouseButtonDblClick(convertMacMouseButtons(button), int(x), int(y))
+			win.windowMouseButtonDblClick(convertMacMouseButtons(button), x, y)
 		}
 	}
 }
 
-//export go_on_timer
-func go_on_timer(hwnd C.int) {
-	if win, ok := hwnds[windowId(hwnd)]; ok {
+func go_on_timer(hwnd windowId) {
+	if win, ok := hwnds[hwnd]; ok {
 		dtNow := time.Now()
 		if dtNow.Sub(win.platform.lastTimerTick) < time.Millisecond*50 {
 			return
@@ -188,11 +162,9 @@ func go_on_timer(hwnd C.int) {
 	}
 }
 
-// Main display frame in points (see window.m GetScreenWidth / Height).
+// Main display frame in points (see cocoa_darwin.go getScreenWidth/Height).
 func GetScreenSize() (width, height int) {
-	width = int(C.GetScreenWidth())
-	height = int(C.GetScreenHeight())
-	return
+	return getScreenWidth(), getScreenHeight()
 }
 
 const maxCanvasWidth = 10000
@@ -336,11 +308,11 @@ func ConvertMacOSKeyToNuiKey(macosKey int) nuikey.Key {
 }
 
 func (c *nativeWindow) startTimer(intervalMs float64) {
-	C.StartTimer(C.int(c.hwnd), C.double(intervalMs))
+	startTimer(c.hwnd, intervalMs)
 }
 
 func (c *nativeWindow) stopTimer() {
-	C.StopTimer(C.int(c.hwnd))
+	stopTimer(c.hwnd)
 }
 
 func (c *nativeWindow) windowMouseMove(x, y int) {
@@ -546,23 +518,17 @@ func (c *nativeWindow) windowMoved(x, y int) {
 	}
 }
 
-// Frame position: X is Cocoa left edge; Y is top-down distance to window top (window.m helpers).
+// Frame position: X is Cocoa left edge; Y is top-down distance to window top (cocoa_darwin.go helpers).
 func (c *nativeWindow) requestWindowPosition() (int, int) {
-	x := int(C.GetWindowPositionX(C.int(c.hwnd)))
-	y := int(C.GetWindowPositionY(C.int(c.hwnd)))
-	return x, y
+	return getWindowPositionX(c.hwnd), getWindowPositionY(c.hwnd)
 }
 
-// Client-area size via contentLayoutRect (same C getters as GetWindowWidth/Height in window.m).
+// Client-area size via contentLayoutRect (same getters as getWindowWidth/Height in cocoa_darwin.go).
 func (c *nativeWindow) requestWindowSize() (int, int) {
-	w := int(C.GetWindowWidth(C.int(c.hwnd)))
-	h := int(C.GetWindowHeight(C.int(c.hwnd)))
-	return w, h
+	return getWindowWidth(c.hwnd), getWindowHeight(c.hwnd)
 }
 
 // On Darwin, identical dimensions to requestWindowSize (thin bridge to ObjC symmetry).
 func (c *nativeWindow) requestClientAreaSize() (int, int) {
-	w := int(C.GetClientAreaWidth(C.int(c.hwnd)))
-	h := int(C.GetClientAreaHeight(C.int(c.hwnd)))
-	return w, h
+	return getClientAreaWidth(c.hwnd), getClientAreaHeight(c.hwnd)
 }

@@ -21,7 +21,11 @@ go build -ldflags="-H=windowsgui" .
 ```
 
 ### macOS
-No extra packages needed (uses Cocoa via cgo).
+No packages needed to build - the macOS backend talks to Cocoa/AppKit at
+runtime via [purego](https://github.com/ebitengine/purego) (including its
+`objc` Objective-C runtime bindings), not cgo, so `GOOS=darwin go build` also
+cross-compiles from Linux/Windows. AppKit itself must be present on whatever
+machine *runs* the binary (true of every macOS install).
 
 ## Minimal app
 
