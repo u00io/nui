@@ -269,15 +269,22 @@ type xClientMessageEvent struct {
 	Window      uintptr
 	MessageType uintptr
 	Format      int32
-	Data        [40]byte // union { char b[20]; short s[10]; long l[5] }; long[5] (8*5) is the largest member
+	// union { char b[20]; short s[10]; long l[5] }; long[5] (8*5) is the
+	// largest member, and it's also what forces the union - and everything
+	// after it in the enclosing struct - onto an 8-byte boundary. [5]int64
+	// (rather than [40]byte) matters here specifically to get Go to insert
+	// that same padding after Format: a byte array only demands 1-byte
+	// alignment, which put Data 4 bytes too early and silently misread
+	// every ClientMessage (including WM_DELETE_WINDOW).
+	Data [5]int64
 }
 
 func (e *xClientMessageEvent) setDataLong(i int, v int64) {
-	*(*int64)(unsafe.Pointer(&e.Data[i*8])) = v
+	e.Data[i] = v
 }
 
 func (e *xClientMessageEvent) dataLong(i int) int64 {
-	return *(*int64)(unsafe.Pointer(&e.Data[i*8]))
+	return e.Data[i]
 }
 
 var (
