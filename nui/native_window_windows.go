@@ -31,6 +31,16 @@ type nativeWindowPlatform struct {
 	canvasBuffer []byte
 	bgColor      color.RGBA
 
+	// Scratch buffer for drawImageToHDC's RGBA->BGRA conversion, sized to
+	// this window's own paint chunk. Used to be a process-wide global (see
+	// its removal), which raced the same way canvasBuffer used to: each
+	// window pumps its own message loop on its own locked OS thread (see
+	// pumpMessages), so two windows' WM_PAINT handlers can run this
+	// conversion concurrently and corrupt each other's pixels - visible as
+	// one window's content bleeding into another's, most noticeably when a
+	// second (e.g. modal) window appears.
+	pixBuffer []byte
+
 	// GetMessage/PeekMessage only ever deliver a window's messages to the OS
 	// thread that created it (and PostQuitMessage only quits that same
 	// thread's queue), so CreateWindowExW and the whole message loop must run

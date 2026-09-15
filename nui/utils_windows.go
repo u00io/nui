@@ -273,13 +273,24 @@ func getHDCSize(hdc uintptr) (width int32, height int32) {
 }
 
 const chunkHeight = 100
-const maxWidth = 10000
 
-var pixBuffer = make([]byte, 4*chunkHeight*maxWidth)
+// ensurePixBuffer grows this window's own RGBA->BGRA scratch buffer to fit
+// size bytes, if needed. Per-window, like ensureCanvasBuffer, so concurrent
+// paints on different windows never share memory.
+func (c *nativeWindow) ensurePixBuffer(size int) []byte {
+	if cap(c.platform.pixBuffer) < size {
+		c.platform.pixBuffer = make([]byte, size)
+	} else {
+		c.platform.pixBuffer = c.platform.pixBuffer[:size]
+	}
+	return c.platform.pixBuffer
+}
 
-func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
+func (c *nativeWindow) drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 	imgStride := img.Stride
 	totalHeight := int(height)
+
+	pixBuffer := c.ensurePixBuffer(int(width) * 4 * chunkHeight)
 
 	for y := 0; y < totalHeight; y += chunkHeight {
 		h := chunkHeight
@@ -405,7 +416,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			win.onPaint(img)
 		}
 
-		drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
+		win.drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
 
 		procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 
