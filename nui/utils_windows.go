@@ -27,6 +27,7 @@ var (
 	procTranslateMessage = user32.NewProc("TranslateMessage")
 	procShowWindow       = user32.NewProc("ShowWindow")
 	procUpdateWindow     = user32.NewProc("UpdateWindow")
+	procDestroyWindow    = user32.NewProc("DestroyWindow")
 
 	procSetCapture     = user32.NewProc("SetCapture")
 	procReleaseCapture = user32.NewProc("ReleaseCapture")

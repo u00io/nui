@@ -208,8 +208,16 @@ func (c *nativeWindow) pumpMessages() {
 	}
 }
 
+// Close destroys the native window via the real DestroyWindow API (not just
+// a posted WM_DESTROY). DestroyWindow is what actually hides/frees the HWND
+// and - critically for ShowModal - hands activation back to the owner window
+// as part of its normal teardown. Posting WM_DESTROY by itself only ran our
+// own cleanup handler for that message without ever destroying the window,
+// so a "closed" modal left a dead but still-visible/owned HWND behind and
+// the later SetForegroundWindow(owner) call was silently ignored by
+// Windows' foreground-lock rules, dropping the whole app to the background.
 func (c *nativeWindow) Close() {
-	procPostMessageW.Call(uintptr(c.hwnd), c_WM_DESTROY, 0, 0)
+	procDestroyWindow.Call(uintptr(c.hwnd))
 }
 
 // ShowModal marks this window as owned by parent (GWLP_HWNDPARENT, so it
