@@ -722,21 +722,16 @@ func (c *nativeWindow) Move(x, y int) {
 	xMoveWindow(c.platform.display, c.platform.window, int32(x), int32(y))
 }
 
-func getScreenSize() (width, height int) {
-	display := xOpenDisplay(0)
-	screen := xDefaultScreen(display)
-	width = int(xDisplayWidth(display, screen))
-	height = int(xDisplayHeight(display, screen))
-	xCloseDisplay(display)
-	return
-}
-
+// MoveToCenterOfScreen centers the window on whichever monitor currently
+// holds the largest portion of it, not on the combined virtual desktop
+// spanning every monitor (nor always the primary one) - so on a multi-
+// monitor setup it lands in the middle of the screen it's actually on.
 func (c *nativeWindow) MoveToCenterOfScreen() {
-	screenWidth, screenHeight := getScreenSize()
+	monX, monY, monWidth, monHeight := monitorRectForWindow(c.platform.display, c.platform.screen, c.windowPosX, c.windowPosY, c.windowWidth, c.windowHeight)
 	windowWidth, windowHeight := c.Size()
-	x := (screenWidth - windowWidth) / 2
-	y := (screenHeight - windowHeight) / 2
-	c.Move(int(x), int(y))
+	x := monX + (monWidth-windowWidth)/2
+	y := monY + (monHeight-windowHeight)/2
+	c.Move(x, y)
 }
 
 func (c *nativeWindow) Resize(width, height int) {

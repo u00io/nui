@@ -333,7 +333,22 @@ var (
 	libcMalloc    func(size uintptr) uintptr
 	libcFree      func(ptr uintptr)
 	libcMemcpy    func(dst uintptr, src unsafe.Pointer, n uintptr) uintptr
+
+	// Xinerama is optional: it's present on virtually every X11 desktop but
+	// isn't a hard dependency the way libX11/libc are, so its absence just
+	// falls back to whole-screen centering (see monitorRectForWindow)
+	// instead of panicking.
+	xineramaAvailable    bool
+	xineramaIsActive     func(display uintptr) int32
+	xineramaQueryScreens func(display uintptr, numberReturn unsafe.Pointer) unsafe.Pointer
 )
+
+// XineramaScreenInfo, field order per X11/extensions/Xinerama.h.
+type xineramaScreenInfo struct {
+	ScreenNumber  int32
+	XOrg, YOrg    int16
+	Width, Height int16
+}
 
 func dlopenFirst(names ...string) (uintptr, error) {
 	var lastErr error
@@ -407,6 +422,12 @@ func init() {
 	libcSetlocale(xLCAll, "")
 	// Required before any Xlib call once multiple windows run their event loops on separate goroutines.
 	xInitThreads()
+
+	if h, err := dlopenFirst("libXinerama.so.1", "libXinerama.so"); err == nil {
+		purego.RegisterLibFunc(&xineramaIsActive, h, "XineramaIsActive")
+		purego.RegisterLibFunc(&xineramaQueryScreens, h, "XineramaQueryScreens")
+		xineramaAvailable = true
+	}
 }
 
 // destroyXImage frees an XImage* created by xCreateImage, including its
@@ -530,4 +551,79 @@ func setWindowDecorationsX(display, window uintptr, allowMinimize, allowMaximize
 
 	xChangeProperty(display, window, motifHints, motifHints, 32, xPropModeReplace, unsafe.Pointer(&hints), 5)
 	xFlush(display)
+}
+
+// monitorRectForWindow returns the bounds of the monitor that contains the
+// largest portion of the window rect (winX, winY, winWidth, winHeight) - not
+// just "the primary monitor" or the whole multi-monitor virtual desktop.
+// Falls back to the full X screen (what XDisplayWidth/XDisplayHeight report)
+// when Xinerama isn't available or reports no active heads, which is also
+// exactly right for a single-monitor setup.
+func monitorRectForWindow(display uintptr, screen int32, winX, winY, winWidth, winHeight int) (x, y, width, height int) {
+	fullWidth := int(xDisplayWidth(display, screen))
+	fullHeight := int(xDisplayHeight(display, screen))
+
+	if !xineramaAvailable || xineramaIsActive(display) == 0 {
+		return 0, 0, fullWidth, fullHeight
+	}
+
+	var count int32
+	screens := xineramaQueryScreens(display, unsafe.Pointer(&count))
+	if screens == nil || count == 0 {
+		return 0, 0, fullWidth, fullHeight
+	}
+	defer xFree(screens)
+
+	infos := unsafe.Slice((*xineramaScreenInfo)(screens), int(count))
+
+	best := 0
+	bestArea := -1
+	for i, m := range infos {
+		area := rectOverlapArea(winX, winY, winWidth, winHeight, int(m.XOrg), int(m.YOrg), int(m.Width), int(m.Height))
+		if area > bestArea {
+			bestArea = area
+			best = i
+		}
+	}
+
+	// The window doesn't currently overlap any monitor (e.g. it was moved
+	// fully off-screen) - pick whichever monitor's center is closest instead
+	// of defaulting to head 0, so it still lands somewhere reasonable.
+	if bestArea <= 0 {
+		best = nearestMonitor(infos, winX, winY, winWidth, winHeight)
+	}
+
+	m := infos[best]
+	return int(m.XOrg), int(m.YOrg), int(m.Width), int(m.Height)
+}
+
+func rectOverlapArea(ax, ay, aw, ah, bx, by, bw, bh int) int {
+	left := max(ax, bx)
+	top := max(ay, by)
+	right := min(ax+aw, bx+bw)
+	bottom := min(ay+ah, by+bh)
+	if right <= left || bottom <= top {
+		return 0
+	}
+	return (right - left) * (bottom - top)
+}
+
+func nearestMonitor(infos []xineramaScreenInfo, winX, winY, winWidth, winHeight int) int {
+	cx := winX + winWidth/2
+	cy := winY + winHeight/2
+
+	best := 0
+	bestDist := -1
+	for i, m := range infos {
+		mcx := int(m.XOrg) + int(m.Width)/2
+		mcy := int(m.YOrg) + int(m.Height)/2
+		dx := cx - mcx
+		dy := cy - mcy
+		dist := dx*dx + dy*dy
+		if bestDist == -1 || dist < bestDist {
+			bestDist = dist
+			best = i
+		}
+	}
+	return best
 }
