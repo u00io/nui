@@ -143,8 +143,9 @@ func (c *nativeWindow) Exec() {
 	}
 }
 
-func (c *nativeWindow) Close() {
+func (c *nativeWindow) Close() bool {
 	closeWindowById(c.hwnd)
+	return true
 }
 
 // ShowModal shows the window as an app-modal dialog. Unlike Linux/Windows this call
