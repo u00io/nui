@@ -216,8 +216,9 @@ func (c *nativeWindow) pumpMessages() {
 // so a "closed" modal left a dead but still-visible/owned HWND behind and
 // the later SetForegroundWindow(owner) call was silently ignored by
 // Windows' foreground-lock rules, dropping the whole app to the background.
-func (c *nativeWindow) Close() {
+func (c *nativeWindow) Close() bool {
 	procDestroyWindow.Call(uintptr(c.hwnd))
+	return true
 }
 
 // ShowModal marks this window as owned by parent (GWLP_HWNDPARENT, so it
