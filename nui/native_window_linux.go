@@ -659,11 +659,12 @@ func (c *nativeWindow) pumpEvents() {
 // it (inputBlocked), the same as the WM_DELETE_WINDOW handler in
 // pumpEvents - covers Close() being called directly (e.g. from a menu
 // action) rather than only via the titlebar close button.
-func (c *nativeWindow) Close() {
+func (c *nativeWindow) Close() bool {
 	if c.inputBlocked() {
-		return
+		return false
 	}
 	atomic.StoreInt32(&c.platform.closeRequested, 1)
+	return true
 }
 
 // doClose performs the actual Xlib teardown. Must only be called from the

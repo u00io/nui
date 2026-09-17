@@ -13,7 +13,7 @@ type Window interface {
 	Show()                   // Shows the window, non-modal; returns immediately
 	ShowModal(parent Window) // Shows the window as a modal dialog owned by parent; returns immediately
 	Update()                 // Updates the window content
-	Close()                  // Closes the window
+	Close() bool             // Closes the window
 	Exec()                   // Waits for the window to close
 
 	SystemHandle() any
