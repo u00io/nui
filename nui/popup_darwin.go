@@ -24,8 +24,10 @@ var (
 	selOrderFront            = objc.RegisterName("orderFront:")
 	selOrderOut              = objc.RegisterName("orderOut:")
 	selAcceptsFirstMouse     = objc.RegisterName("acceptsFirstMouse:")
+	selWorksWhenModal        = objc.RegisterName("worksWhenModal")
 
 	nuiPopupViewClass     objc.Class
+	nuiPopupWindowClass   objc.Class
 	nuiPopupViewClassOnce sync.Once
 )
 
@@ -67,7 +69,7 @@ func createPopupWindow(owner Window, interactive bool) PopupWindow {
 		return nil
 	}
 	nuiPopupViewClassOnce.Do(registerPopupViewClass)
-	if nuiPopupViewClass == 0 {
+	if nuiPopupViewClass == 0 || nuiPopupWindowClass == 0 {
 		return nil
 	}
 
@@ -98,7 +100,7 @@ func takePopupNative() popupNative {
 	var native popupNative
 	withAutoreleasePool(func() {
 		frame := nsRect{nsPoint{0, 0}, nsSize{1, 1}}
-		win := objc.ID(clsNSWindow).Send(selAlloc)
+		win := objc.ID(nuiPopupWindowClass).Send(selAlloc)
 		win = win.Send(selInitWithContentRectStyleMaskBackingDefer, frame, nsWindowStyleMaskBorderless, nsBackingStoreBuffered, false)
 		win.Send(selSetReleasedWhenClosed, false)
 		win.Send(selSetLevel, nsPopUpMenuWindowLevel)
@@ -142,7 +144,27 @@ func registerPopupViewClass() {
 		return
 	}
 	nuiPopupViewClass = cls
+
+	// A plain NSWindow ignores clicks while the app is running an app-modal
+	// session (e.g. Form.ShowModal) for a different window, which is how
+	// context menus/comboboxes/custom popups opened from a modal dialog
+	// ended up dead on macOS. Overriding worksWhenModal, like AppKit's own
+	// NSMenu windows do, keeps popups interactive during that modal session.
+	winCls, err := objc.RegisterClass(
+		"NUIPopupWindow",
+		clsNSWindow,
+		nil, nil,
+		[]objc.MethodDef{
+			{Cmd: selWorksWhenModal, Fn: nuiPopupWindowWorksWhenModal},
+		},
+	)
+	if err != nil {
+		return
+	}
+	nuiPopupWindowClass = winCls
 }
+
+func nuiPopupWindowWorksWhenModal(_ objc.ID, _ objc.SEL) bool { return true }
 
 // closePopupsOf closes the popups of a window that is closing.
 // Called on the main thread from nuiWindowWillClose.
