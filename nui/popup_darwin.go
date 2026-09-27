@@ -7,6 +7,8 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego/objc"
+
+	"github.com/u00io/nui/nuimouse"
 )
 
 const (
@@ -39,6 +41,9 @@ type popupWindow struct {
 	win    objc.ID
 	view   objc.ID
 	closed bool
+	// cursor is set on every mouse move over the popup: NSCursor is global,
+	// and nothing else sets it while the mouse is over the popup
+	cursor nuimouse.MouseCursor
 }
 
 // Keyed by the popup's content view, which drawRect: gets as self.
@@ -206,6 +211,7 @@ func nuiPopupViewOtherMouseUp(self objc.ID, _ objc.SEL, event objc.ID) {
 func nuiPopupViewMouseMoved(self objc.ID, _ objc.SEL, event objc.ID) {
 	if p, ok := popups[self]; ok {
 		p.mouseMove(popupEventLocation(self, event))
+		setMacCursor(macCursorType(p.cursor))
 	}
 }
 
@@ -247,6 +253,17 @@ func (p *popupWindow) Hide() {
 			return
 		}
 		p.win.Send(selOrderOut, objc.ID(0))
+	})
+}
+
+// SetMouseCursor is called on the main thread from the popup's mouse event
+// callbacks, so the cursor is applied right away.
+func (p *popupWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
+	runOnMainSync(func() {
+		p.cursor = cursor
+		if !p.closed {
+			setMacCursor(macCursorType(cursor))
+		}
 	})
 }
 

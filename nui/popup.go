@@ -23,6 +23,9 @@ type PopupWindow interface {
 	OnMouseLeave(func())
 	OnMouseWheel(func(deltaX, deltaY int))
 
+	// SetMouseCursor sets the cursor shown over an interactive popup
+	SetMouseCursor(cursor nuimouse.MouseCursor)
+
 	// ShowAt moves the popup to (x, y) in screen coordinates, resizes it and
 	// shows it without activating it
 	ShowAt(x, y, width, height int)

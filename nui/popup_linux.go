@@ -209,6 +209,16 @@ func (p *popupWindow) Hide() {
 	xFlush(p.display)
 }
 
+func (p *popupWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
+	popupsMu.Lock()
+	defer popupsMu.Unlock()
+	if p.closed {
+		return
+	}
+	xDefineCursor(p.display, p.window, xCreateFontCursor(p.display, xCursorShape(cursor)))
+	xFlush(p.display)
+}
+
 func (p *popupWindow) Update() {
 	popupsMu.Lock()
 	defer popupsMu.Unlock()

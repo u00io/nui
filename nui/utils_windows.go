@@ -747,12 +747,25 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 }
 
 func (c *nativeWindow) changeMouseCursor(cursor nuimouse.MouseCursor) bool {
-	var cursorID uintptr
-
 	if c.lastSetCursor == cursor && c.lastSetCursor != nuimouse.MouseCursorNotDefined {
 		return true
 	}
 
+	hCursor := loadMouseCursor(cursor)
+	if hCursor == 0 {
+		return false
+	}
+
+	c.lastSetCursor = cursor
+	//fmt.Println("Setting cursor to:", cursor)
+
+	ret, _, _ := procSetCursor.Call(hCursor)
+	return ret != 0
+}
+
+// loadMouseCursor returns the system cursor for the cursor kind, 0 if none.
+func loadMouseCursor(cursor nuimouse.MouseCursor) uintptr {
+	var cursorID uintptr
 	switch cursor {
 	case nuimouse.MouseCursorArrow:
 		cursorID = c_IDC_ARROW
@@ -765,19 +778,10 @@ func (c *nativeWindow) changeMouseCursor(cursor nuimouse.MouseCursor) bool {
 	case nuimouse.MouseCursorIBeam:
 		cursorID = c_IDC_IBEAM
 	default:
-		return false
+		return 0
 	}
-
 	hCursor, _, _ := procLoadCursorW.Call(0, cursorID)
-	if hCursor == 0 {
-		return false
-	}
-
-	c.lastSetCursor = cursor
-	//fmt.Println("Setting cursor to:", cursor)
-
-	ret, _, _ := procSetCursor.Call(hCursor)
-	return ret != 0
+	return hCursor
 }
 
 func createHICONFromRGBA(img *image.RGBA) syscall.Handle {

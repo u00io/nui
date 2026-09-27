@@ -193,20 +193,24 @@ func (c *nativeWindow) macSetMouseCursor(cursor nuimouse.MouseCursor) {
 		return
 	}
 	c.lastSetCursor = cursor
-	macCursor := 0
-	switch c.currentCursor {
+	setMacCursor(macCursorType(c.currentCursor))
+}
+
+// macCursorType maps the cursor kind to setMacCursor's cursor type.
+func macCursorType(cursor nuimouse.MouseCursor) int {
+	switch cursor {
 	case nuimouse.MouseCursorArrow:
-		macCursor = 1
+		return 1
 	case nuimouse.MouseCursorPointer:
-		macCursor = 2
+		return 2
 	case nuimouse.MouseCursorResizeHor:
-		macCursor = 3
+		return 3
 	case nuimouse.MouseCursorResizeVer:
-		macCursor = 4
+		return 4
 	case nuimouse.MouseCursorIBeam:
-		macCursor = 5
+		return 5
 	}
-	setMacCursor(macCursor)
+	return 0
 }
 
 /////////////////////////////////////////////////////

@@ -38,6 +38,7 @@ const (
 
 	c_HTTRANSPARENT            = ^uintptr(0) // -1
 	c_MA_NOACTIVATE            = 3
+	c_WM_SETCURSOR             = 0x0020
 	c_HTCLIENT                 = 1
 	c_WM_ACTIVATE              = 0x0006
 	c_WA_INACTIVE              = 0
@@ -57,7 +58,8 @@ type popupWindow struct {
 
 	hwnd        syscall.Handle
 	interactive bool
-	mouseInside bool // owner's thread only
+	mouseInside bool    // owner's thread only
+	hCursor     uintptr // the cursor set by SetMouseCursor, 0 for the class cursor
 
 	canvasBuffer []byte
 	pixBuffer    []byte
@@ -144,6 +146,13 @@ func popupWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintp
 			return c_HTTRANSPARENT
 		}
 		return c_HTCLIENT
+
+	case c_WM_SETCURSOR:
+		// The class cursor (an arrow) unless SetMouseCursor chose another
+		if p != nil && p.hCursor != 0 && lParam&0xFFFF == c_HTCLIENT {
+			procSetCursor.Call(p.hCursor)
+			return 1
+		}
 
 	case c_WM_MOUSEMOVE:
 		if p != nil {
@@ -266,6 +275,15 @@ func (p *popupWindow) Hide() {
 		0, 0, 0, 0,
 		c_SWP_NOMOVE|c_SWP_NOSIZE|c_SWP_NOZORDER|c_SWP_NOACTIVATE|c_SWP_HIDEWINDOW,
 	)
+}
+
+// SetMouseCursor is called on the owner's thread, which is also the popup's,
+// so SetCursor can apply it right away when the mouse is over the popup.
+func (p *popupWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
+	p.hCursor = loadMouseCursor(cursor)
+	if p.mouseInside && p.hCursor != 0 {
+		procSetCursor.Call(p.hCursor)
+	}
 }
 
 func (p *popupWindow) Update() {

@@ -874,6 +874,14 @@ func (c *nativeWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
 }
 
 func (c *nativeWindow) changeMouseCursor(mouseCursor nuimouse.MouseCursor) bool {
+	cursor := xCreateFontCursor(c.platform.display, xCursorShape(mouseCursor))
+	xDefineCursor(c.platform.display, c.platform.window, cursor)
+	xFlush(c.platform.display)
+	return true
+}
+
+// xCursorShape returns the X cursor font shape for the cursor kind.
+func xCursorShape(mouseCursor nuimouse.MouseCursor) uint32 {
 	var cursorShape uint32
 
 	const (
@@ -901,11 +909,7 @@ func (c *nativeWindow) changeMouseCursor(mouseCursor nuimouse.MouseCursor) bool 
 	case nuimouse.MouseCursorIBeam:
 		cursorShape = CursorIBeam
 	}
-
-	cursor := xCreateFontCursor(c.platform.display, cursorShape)
-	xDefineCursor(c.platform.display, c.platform.window, cursor)
-	xFlush(c.platform.display)
-	return true
+	return cursorShape
 }
 
 func (c *nativeWindow) MinimizeWindow() {
