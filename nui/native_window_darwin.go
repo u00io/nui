@@ -237,6 +237,10 @@ func (c *nativeWindow) MaximizeWindow() {
 	maximizeWindow(c.hwnd)
 }
 
+func (c *nativeWindow) RestoreWindow() {
+	restoreWindow(c.hwnd)
+}
+
 // SetAllowMinimize shows or hides the titlebar's miniaturize button, e.g. for
 // dialog-style windows that shouldn't offer it.
 func (c *nativeWindow) SetAllowMinimize(allow bool) {
@@ -278,7 +282,7 @@ func (c *nativeWindow) Height() int {
 }
 
 func (c *nativeWindow) IsMaximized() bool {
-	return false
+	return isWindowZoomed(c.hwnd)
 }
 
 func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {

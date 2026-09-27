@@ -341,6 +341,10 @@ func (c *nativeWindow) MaximizeWindow() {
 	procShowWindow.Call(uintptr(c.hwnd), c_SW_SHOWMAXIMIZED)
 }
 
+func (c *nativeWindow) RestoreWindow() {
+	procShowWindow.Call(uintptr(c.hwnd), c_SW_RESTORE)
+}
+
 // SetAllowMinimize shows or hides the titlebar's minimize button by toggling
 // WS_MINIMIZEBOX, e.g. for dialog-style windows that shouldn't offer it.
 func (c *nativeWindow) SetAllowMinimize(allow bool) {

@@ -51,6 +51,8 @@ type Window interface {
 	Resize(width int, height int)
 	MinimizeWindow()
 	MaximizeWindow()
+	// RestoreWindow returns a maximized window to its normal size
+	RestoreWindow()
 	IsMaximized() bool
 
 	SetAllowMinimize(allow bool)

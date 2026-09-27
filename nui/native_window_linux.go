@@ -895,6 +895,10 @@ func (c *nativeWindow) MaximizeWindow() {
 	maximizeWindowX(c.platform.display, c.platform.window)
 }
 
+func (c *nativeWindow) RestoreWindow() {
+	restoreWindowX(c.platform.display, c.platform.window)
+}
+
 // SetAllowMinimize shows or hides the titlebar's minimize button via
 // _MOTIF_WM_HINTS, e.g. for dialog-style windows that shouldn't offer it.
 func (c *nativeWindow) SetAllowMinimize(allow bool) {

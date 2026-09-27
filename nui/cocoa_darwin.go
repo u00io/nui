@@ -1026,6 +1026,25 @@ func maximizeWindow(id windowId) {
 	}
 }
 
+// restoreWindow un-zooms a zoomed window; zoom: toggles, so it is only sent when zoomed
+func restoreWindow(id windowId) {
+	win, ok := cocoaWindows[int(id)]
+	if !ok {
+		return
+	}
+	if objc.Send[bool](win, selIsZoomed) {
+		win.Send(selZoom, objc.ID(0))
+	}
+}
+
+func isWindowZoomed(id windowId) bool {
+	win, ok := cocoaWindows[int(id)]
+	if !ok {
+		return false
+	}
+	return objc.Send[bool](win, selIsZoomed)
+}
+
 // setWindowAllowMinimize toggles NSWindowStyleMaskMiniaturizable, which
 // governs both the miniaturize button's presence AND whether Cmd+M/the
 // Window menu can miniaturize.
