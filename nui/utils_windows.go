@@ -425,6 +425,12 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 		return 0
 
+	case c_WM_ACTIVATE:
+		if wParam&0xFFFF == c_WA_INACTIVE && win != nil && win.onDeactivate != nil {
+			win.onDeactivate()
+		}
+		// No return: DefWindowProc sets the keyboard focus on activation
+
 	case c_WM_NUI_CREATE_POPUP:
 		// Popups are created on their owner's thread (see createPopupWindow)
 		return createPopupHwnd(hwnd)

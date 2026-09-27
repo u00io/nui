@@ -188,7 +188,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 		unsafe.Pointer(&attrs),
 	)
 
-	xSelectInput(c.platform.display, c.platform.window, xExposureMask|xPropertyChangeMask|xStructureNotifyMask|xKeyPressMask|xKeyReleaseMask|xEnterWindowMask|xLeaveWindowMask|xButtonPressMask|xButtonReleaseMask|xPointerMotionMask)
+	xSelectInput(c.platform.display, c.platform.window, xExposureMask|xPropertyChangeMask|xStructureNotifyMask|xKeyPressMask|xKeyReleaseMask|xEnterWindowMask|xLeaveWindowMask|xButtonPressMask|xButtonReleaseMask|xPointerMotionMask|xFocusChangeMask)
 
 	var getAttr xWindowAttributes
 	xGetWindowAttributes(c.platform.display, c.platform.window, unsafe.Pointer(&getAttr))
@@ -482,6 +482,15 @@ func (c *nativeWindow) pumpEvents() {
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.Keycode))
 				if c.onKeyUp != nil {
 					c.onKeyUp(key, c.getModifierState())
+				}
+
+			case xFocusOut:
+				focusEvent := (*xFocusChangeEvent)(unsafe.Pointer(&event))
+				// Skip the temporary focus changes of keyboard grabs (e.g. the
+				// WM's own shortcuts) and focus moving into our own subwindows
+				if (focusEvent.Mode == xNotifyNormal || focusEvent.Mode == xNotifyWhileGrabbed) &&
+					focusEvent.Detail != xNotifyInferior && c.onDeactivate != nil {
+					c.onDeactivate()
 				}
 
 			case xEnterNotify:

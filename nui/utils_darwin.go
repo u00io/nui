@@ -50,6 +50,12 @@ func go_on_window_will_close(hwnd windowId) {
 	}
 }
 
+func go_on_window_deactivate(hwnd windowId) {
+	if win, ok := hwnds[hwnd]; ok && win.onDeactivate != nil {
+		win.onDeactivate()
+	}
+}
+
 func go_on_key_down(hwnd windowId, code int) {
 	key := nuikey.Key(ConvertMacOSKeyToNuiKey(code))
 	if win, ok := hwnds[hwnd]; ok {

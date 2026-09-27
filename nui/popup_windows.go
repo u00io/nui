@@ -6,6 +6,8 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"github.com/u00io/nui/nuimouse"
 )
 
 var (
@@ -36,6 +38,9 @@ const (
 
 	c_HTTRANSPARENT            = ^uintptr(0) // -1
 	c_MA_NOACTIVATE            = 3
+	c_HTCLIENT                 = 1
+	c_WM_ACTIVATE              = 0x0006
+	c_WA_INACTIVE              = 0
 	c_HWND_TOPMOST             = ^uintptr(0) // -1
 	c_MONITOR_DEFAULTTONEAREST = 2
 )
@@ -48,8 +53,11 @@ type t_MONITORINFO struct {
 }
 
 type popupWindow struct {
-	hwnd    syscall.Handle
-	onPaint func(rgba *image.RGBA)
+	popupCallbacks
+
+	hwnd        syscall.Handle
+	interactive bool
+	mouseInside bool // owner's thread only
 
 	canvasBuffer []byte
 	pixBuffer    []byte
@@ -66,7 +74,7 @@ var (
 // createPopupWindow asks the owner's thread to create the popup HWND, so the
 // popup shares the owner's message loop: no extra thread, and HTTRANSPARENT
 // (mouse pass-through) only works between windows of the same thread.
-func createPopupWindow(owner Window) PopupWindow {
+func createPopupWindow(owner Window, interactive bool) PopupWindow {
 	o, ok := owner.(*nativeWindow)
 	if !ok || o == nil {
 		return nil
@@ -78,7 +86,7 @@ func createPopupWindow(owner Window) PopupWindow {
 		return nil
 	}
 
-	p := &popupWindow{hwnd: syscall.Handle(hwnd)}
+	p := &popupWindow{hwnd: syscall.Handle(hwnd), interactive: interactive}
 	popupsMu.Lock()
 	popups[p.hwnd] = p
 	popupsMu.Unlock()
@@ -88,11 +96,13 @@ func createPopupWindow(owner Window) PopupWindow {
 func registerPopupClass() {
 	popupClassName, _ = syscall.UTF16PtrFromString("NUIPopupWindow")
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
+	arrow, _, _ := procLoadCursorW.Call(0, c_IDC_ARROW)
 	wndClass := t_WNDCLASSEXW{
 		cbSize:        uint32(unsafe.Sizeof(t_WNDCLASSEXW{})),
 		style:         c_CS_DROPSHADOW,
 		lpfnWndProc:   syscall.NewCallback(popupWndProc),
 		hInstance:     syscall.Handle(hInstance),
+		hCursor:       syscall.Handle(arrow),
 		lpszClassName: popupClassName,
 	}
 	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass)))
@@ -124,9 +134,50 @@ func getPopupByHandle(hwnd syscall.Handle) *popupWindow {
 }
 
 func popupWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
+	p := getPopupByHandle(hwnd)
+	x := int(int16(lParam & 0xFFFF))
+	y := int(int16((lParam >> 16) & 0xFFFF))
+
 	switch msg {
 	case c_WM_NCHITTEST:
-		return c_HTTRANSPARENT
+		if p == nil || !p.interactive {
+			return c_HTTRANSPARENT
+		}
+		return c_HTCLIENT
+
+	case c_WM_MOUSEMOVE:
+		if p != nil {
+			if !p.mouseInside {
+				p.mouseInside = true
+				tme := t_TRACKMOUSEEVENT{
+					cbSize:    uint32(unsafe.Sizeof(t_TRACKMOUSEEVENT{})),
+					dwFlags:   c_TME_LEAVE,
+					hwndTrack: hwnd,
+				}
+				procTrackMouseEvent.Call(uintptr(unsafe.Pointer(&tme)))
+			}
+			p.mouseMove(x, y)
+		}
+		return 0
+
+	case c_WM_MOUSELEAVE:
+		if p != nil {
+			p.mouseInside = false
+			p.mouseLeave()
+		}
+		return 0
+
+	case c_WM_LBUTTONDOWN, c_WM_RBUTTONDOWN, c_WM_MBUTTONDOWN:
+		if p != nil {
+			p.mouseButtonDown(popupMouseButton(msg), x, y)
+		}
+		return 0
+
+	case c_WM_LBUTTONUP, c_WM_RBUTTONUP, c_WM_MBUTTONUP:
+		if p != nil {
+			p.mouseButtonUp(popupMouseButton(msg), x, y)
+		}
+		return 0
 
 	case c_WM_MOUSEACTIVATE:
 		return c_MA_NOACTIVATE
@@ -137,7 +188,7 @@ func popupWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintp
 	case c_WM_PAINT:
 		var ps t_PAINTSTRUCT
 		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
-		if p := getPopupByHandle(hwnd); p != nil {
+		if p != nil {
 			p.paint(hdc)
 		}
 		procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
@@ -179,8 +230,14 @@ func (p *popupWindow) paint(hdc uintptr) {
 	drawRGBAToHDC(img, hdc, width, height, &p.pixBuffer)
 }
 
-func (p *popupWindow) OnPaint(f func(rgba *image.RGBA)) {
-	p.onPaint = f
+func popupMouseButton(msg uint32) nuimouse.MouseButton {
+	switch msg {
+	case c_WM_RBUTTONDOWN, c_WM_RBUTTONUP:
+		return nuimouse.MouseButtonRight
+	case c_WM_MBUTTONDOWN, c_WM_MBUTTONUP:
+		return nuimouse.MouseButtonMiddle
+	}
+	return nuimouse.MouseButtonLeft
 }
 
 func (p *popupWindow) ShowAt(x, y, width, height int) {

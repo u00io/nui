@@ -212,6 +212,7 @@ var (
 	selWindowDidMove                                   = objc.RegisterName("windowDidMove:")
 	selWindowShouldClose                               = objc.RegisterName("windowShouldClose:")
 	selWindowWillClose                                 = objc.RegisterName("windowWillClose:")
+	selWindowDidResignKey                              = objc.RegisterName("windowDidResignKey:")
 
 	selAcceptsFirstResponder = objc.RegisterName("acceptsFirstResponder")
 	selBecomeFirstResponder  = objc.RegisterName("becomeFirstResponder")
@@ -543,6 +544,13 @@ func nuiWindowWillClose(self objc.ID, _ objc.SEL, notification objc.ID) {
 	delete(cocoaWindows, wid)
 }
 
+// nuiWindowDidResignKey: the window lost keyboard focus to another window
+// or application.
+func nuiWindowDidResignKey(self objc.ID, _ objc.SEL, notification objc.ID) {
+	win := objc.Send[objc.ID](notification, selObject)
+	go_on_window_deactivate(wndID(win))
+}
+
 /////////////////////////////////////////////////////
 // NUIPaintView: full-window content NSView hosting the software framebuffer
 // and input.
@@ -756,6 +764,7 @@ func registerNuiClasses() {
 			{Cmd: selWindowDidMove, Fn: nuiWindowDidMove},
 			{Cmd: selWindowShouldClose, Fn: nuiWindowShouldClose},
 			{Cmd: selWindowWillClose, Fn: nuiWindowWillClose},
+			{Cmd: selWindowDidResignKey, Fn: nuiWindowDidResignKey},
 		},
 	)
 	if err != nil {

@@ -22,6 +22,7 @@ var (
 	selOrderFront            = objc.RegisterName("orderFront:")
 	selOrderOut              = objc.RegisterName("orderOut:")
 	selClose                 = objc.RegisterName("close")
+	selAcceptsFirstMouse     = objc.RegisterName("acceptsFirstMouse:")
 
 	nuiPopupViewClass     objc.Class
 	nuiPopupViewClassOnce sync.Once
@@ -32,18 +33,19 @@ var (
 // and has no delegate, so none of the window close/app quit logic sees it.
 // Like the rest of the Cocoa code, it's only touched on the main thread.
 type popupWindow struct {
-	owner   windowId
-	win     objc.ID
-	view    objc.ID
-	closed  bool
-	onPaint func(rgba *image.RGBA)
+	popupCallbacks
+
+	owner  windowId
+	win    objc.ID
+	view   objc.ID
+	closed bool
 }
 
 // Keyed by the popup's content view, which drawRect: gets as self.
 // Main thread only, like cocoaWindows.
 var popups = map[objc.ID]*popupWindow{}
 
-func createPopupWindow(owner Window) PopupWindow {
+func createPopupWindow(owner Window, interactive bool) PopupWindow {
 	o, ok := owner.(*nativeWindow)
 	if !ok || o == nil {
 		return nil
@@ -61,8 +63,9 @@ func createPopupWindow(owner Window) PopupWindow {
 			win = win.Send(selInitWithContentRectStyleMaskBackingDefer, frame, nsWindowStyleMaskBorderless, nsBackingStoreBuffered, false)
 			win.Send(selSetReleasedWhenClosed, false)
 			win.Send(selSetLevel, nsPopUpMenuWindowLevel)
-			// Mouse goes through to the owner, which keeps its hover state
-			win.Send(selSetIgnoresMouseEvents, true)
+			// A tooltip lets the mouse through to the owner, which keeps its
+			// hover state
+			win.Send(selSetIgnoresMouseEvents, !interactive)
 			win.Send(selSetHasShadow, true)
 
 			view := objc.ID(nuiPopupViewClass).Send(selAlloc).Send(selInitWithFrame, frame)
@@ -85,6 +88,20 @@ func registerPopupViewClass() {
 		[]objc.MethodDef{
 			{Cmd: selIsFlipped, Fn: nuiViewIsFlipped},
 			{Cmd: selDrawRect, Fn: nuiPopupViewDrawRect},
+			// The popup never becomes key, so without this the first click
+			// would only be used to "activate" it
+			{Cmd: selAcceptsFirstMouse, Fn: nuiPopupViewAcceptsFirstMouse},
+			{Cmd: selMouseDown, Fn: nuiPopupViewMouseDown},
+			{Cmd: selRightMouseDown, Fn: nuiPopupViewRightMouseDown},
+			{Cmd: selOtherMouseDown, Fn: nuiPopupViewOtherMouseDown},
+			{Cmd: selMouseUp, Fn: nuiPopupViewMouseUp},
+			{Cmd: selRightMouseUp, Fn: nuiPopupViewRightMouseUp},
+			{Cmd: selOtherMouseUp, Fn: nuiPopupViewOtherMouseUp},
+			{Cmd: selMouseMoved, Fn: nuiPopupViewMouseMoved},
+			{Cmd: selMouseDragged, Fn: nuiPopupViewMouseMoved},
+			{Cmd: selRightMouseDragged, Fn: nuiPopupViewMouseMoved},
+			{Cmd: selMouseExited, Fn: nuiPopupViewMouseExited},
+			{Cmd: selUpdateTrackingAreas, Fn: nuiViewUpdateTrackingAreas},
 		},
 	)
 	if err != nil {
@@ -144,8 +161,57 @@ func nuiPopupViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 	cgColorSpaceRelease(colorSpace)
 }
 
-func (p *popupWindow) OnPaint(f func(rgba *image.RGBA)) {
-	p.onPaint = f
+func nuiPopupViewAcceptsFirstMouse(self objc.ID, _ objc.SEL, _ objc.ID) bool { return true }
+
+// popupEventLocation returns the event position in top-down view coordinates.
+func popupEventLocation(self, event objc.ID) (int, int) {
+	pt := eventLocationInView(self, event)
+	bounds := objc.Send[nsRect](self, selBounds)
+	return int(pt.X), int(bounds.Size.Height - pt.Y)
+}
+
+func nuiPopupHandleMouseButton(self, event objc.ID, button int, down bool) {
+	p, ok := popups[self]
+	if !ok {
+		return
+	}
+	x, y := popupEventLocation(self, event)
+	if down {
+		p.mouseButtonDown(convertMacMouseButtons(button), x, y)
+	} else {
+		p.mouseButtonUp(convertMacMouseButtons(button), x, y)
+	}
+}
+
+func nuiPopupViewMouseDown(self objc.ID, _ objc.SEL, event objc.ID) {
+	nuiPopupHandleMouseButton(self, event, 0, true)
+}
+func nuiPopupViewRightMouseDown(self objc.ID, _ objc.SEL, event objc.ID) {
+	nuiPopupHandleMouseButton(self, event, 1, true)
+}
+func nuiPopupViewOtherMouseDown(self objc.ID, _ objc.SEL, event objc.ID) {
+	nuiPopupHandleMouseButton(self, event, 2, true)
+}
+func nuiPopupViewMouseUp(self objc.ID, _ objc.SEL, event objc.ID) {
+	nuiPopupHandleMouseButton(self, event, 0, false)
+}
+func nuiPopupViewRightMouseUp(self objc.ID, _ objc.SEL, event objc.ID) {
+	nuiPopupHandleMouseButton(self, event, 1, false)
+}
+func nuiPopupViewOtherMouseUp(self objc.ID, _ objc.SEL, event objc.ID) {
+	nuiPopupHandleMouseButton(self, event, 2, false)
+}
+
+func nuiPopupViewMouseMoved(self objc.ID, _ objc.SEL, event objc.ID) {
+	if p, ok := popups[self]; ok {
+		p.mouseMove(popupEventLocation(self, event))
+	}
+}
+
+func nuiPopupViewMouseExited(self objc.ID, _ objc.SEL, _ objc.ID) {
+	if p, ok := popups[self]; ok {
+		p.mouseLeave()
+	}
 }
 
 // ShowAt takes top-down global coordinates (see cocoaToTopDownY).

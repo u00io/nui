@@ -46,6 +46,7 @@ const (
 	xLeaveWindowMask     = 1 << 5
 	xPointerMotionMask   = 1 << 6
 	xExposureMask        = 1 << 15
+	xFocusChangeMask     = 1 << 21
 	xStructureNotifyMask = 1 << 17
 	xPropertyChangeMask  = 1 << 22
 
@@ -59,6 +60,7 @@ const (
 	xMotionNotify    = 6
 	xEnterNotify     = 7
 	xLeaveNotify     = 8
+	xFocusOut        = 10
 	xExpose          = 12
 	xDestroyNotify   = 17
 	xUnmapNotify     = 18
@@ -176,6 +178,23 @@ type xButtonEvent struct {
 	Button       uint32
 	SameScreen   int32
 }
+
+// XFocusChangeEvent, field order per Xlib.h
+type xFocusChangeEvent struct {
+	Type      int32
+	Serial    uintptr
+	SendEvent int32
+	Display   uintptr
+	Window    uintptr
+	Mode      int32
+	Detail    int32
+}
+
+const (
+	xNotifyNormal       = 0
+	xNotifyWhileGrabbed = 3
+	xNotifyInferior     = 2
+)
 
 type xMotionEvent struct {
 	Type         int32

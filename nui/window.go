@@ -39,6 +39,9 @@ type Window interface {
 	OnResize(func(width, height int))
 	OnCloseRequest(func() bool)
 	OnTimer(func())
+	// OnDeactivate is called when the window loses activation (keyboard
+	// focus): the user switched to another window or application
+	OnDeactivate(func())
 
 	// Window appearance
 	SetTitle(title string)

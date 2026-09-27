@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"sync"
 	"unsafe"
+
+	"github.com/u00io/nui/nuimouse"
 )
 
 const (
@@ -18,15 +20,17 @@ const (
 // owner's pumpEvents delivers its events (see processEvent) and no extra
 // connection or goroutine is needed.
 type popupWindow struct {
-	owner   *nativeWindow
-	display uintptr
-	window  uintptr
+	popupCallbacks
+
+	owner       *nativeWindow
+	display     uintptr
+	window      uintptr
+	interactive bool
 
 	// Guarded by popupsMu
 	closed        bool
 	width, height int
 
-	onPaint      func(rgba *image.RGBA)
 	canvasBuffer []byte
 }
 
@@ -35,7 +39,7 @@ var (
 	popups   = make(map[uintptr]*popupWindow)
 )
 
-func createPopupWindow(owner Window) PopupWindow {
+func createPopupWindow(owner Window, interactive bool) PopupWindow {
 	o, ok := owner.(*nativeWindow)
 	if !ok || o == nil || o.platform.closed {
 		return nil
@@ -62,23 +66,28 @@ func createPopupWindow(owner Window) PopupWindow {
 		return nil
 	}
 
-	xSelectInput(display, window, xExposureMask)
+	windowType := "_NET_WM_WINDOW_TYPE_TOOLTIP"
+	if interactive {
+		windowType = "_NET_WM_WINDOW_TYPE_POPUP_MENU"
+		xSelectInput(display, window, xExposureMask|xButtonPressMask|xButtonReleaseMask|xPointerMotionMask|xLeaveWindowMask)
+	} else {
+		xSelectInput(display, window, xExposureMask)
+		// Empty input shape: the mouse passes through to the window below,
+		// so the owner keeps its hover state while the cursor is over the popup
+		if xShapeAvailable {
+			xShapeCombineRectangles(display, window, xShapeInput, 0, 0, nil, 0, xShapeSet, xShapeUnsorted)
+		}
+	}
 
 	// Hints for compositors (shadows, animations) and stacking
 	wmWindowType := xInternAtom(display, "_NET_WM_WINDOW_TYPE", xFalse)
-	wmWindowTypeTooltip := xInternAtom(display, "_NET_WM_WINDOW_TYPE_TOOLTIP", xFalse)
-	xChangeProperty(display, window, wmWindowType, xXAAtom, 32, xPropModeReplace, unsafe.Pointer(&wmWindowTypeTooltip), 1)
+	wmWindowTypeValue := xInternAtom(display, windowType, xFalse)
+	xChangeProperty(display, window, wmWindowType, xXAAtom, 32, xPropModeReplace, unsafe.Pointer(&wmWindowTypeValue), 1)
 	xSetTransientForHint(display, window, o.platform.window)
-
-	// Empty input shape: the mouse passes through to the window below, so
-	// the owner keeps its hover state while the cursor is over the popup
-	if xShapeAvailable {
-		xShapeCombineRectangles(display, window, xShapeInput, 0, 0, nil, 0, xShapeSet, xShapeUnsorted)
-	}
 
 	xFlush(display)
 
-	p := &popupWindow{owner: o, display: display, window: window}
+	p := &popupWindow{owner: o, display: display, window: window, interactive: interactive}
 	popupsMu.Lock()
 	popups[window] = p
 	popupsMu.Unlock()
@@ -106,9 +115,36 @@ func closePopupsOf(owner *nativeWindow) {
 
 // processEvent runs on the owner's pumpEvents goroutine.
 func (p *popupWindow) processEvent(event *xEvent) {
-	if event.eventType() != xExpose {
-		return
+	switch event.eventType() {
+	case xExpose:
+		p.paint()
+	case xMotionNotify:
+		motionEvent := (*xMotionEvent)(unsafe.Pointer(event))
+		p.mouseMove(int(motionEvent.X), int(motionEvent.Y))
+	case xButtonPress, xButtonRelease:
+		buttonEvent := (*xButtonEvent)(unsafe.Pointer(event))
+		var btn nuimouse.MouseButton
+		switch buttonEvent.Button {
+		case 1:
+			btn = nuimouse.MouseButtonLeft
+		case 2:
+			btn = nuimouse.MouseButtonMiddle
+		case 3:
+			btn = nuimouse.MouseButtonRight
+		default:
+			return // wheel
+		}
+		if event.eventType() == xButtonPress {
+			p.mouseButtonDown(btn, int(buttonEvent.X), int(buttonEvent.Y))
+		} else {
+			p.mouseButtonUp(btn, int(buttonEvent.X), int(buttonEvent.Y))
+		}
+	case xLeaveNotify:
+		p.mouseLeave()
 	}
+}
+
+func (p *popupWindow) paint() {
 
 	popupsMu.Lock()
 	closed, width, height := p.closed, p.width, p.height
@@ -132,10 +168,6 @@ func (p *popupWindow) processEvent(event *xEvent) {
 	}
 
 	putImageRGBA(p.display, p.window, img, width, height)
-}
-
-func (p *popupWindow) OnPaint(f func(rgba *image.RGBA)) {
-	p.onPaint = f
 }
 
 func (p *popupWindow) ShowAt(x, y, width, height int) {

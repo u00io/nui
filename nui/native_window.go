@@ -56,6 +56,7 @@ type nativeWindow struct {
 	onResize       func(width, height int)
 	onCloseRequest func() bool
 	onTimer        func()
+	onDeactivate   func()
 }
 
 func (c *nativeWindow) OnKeyDown(f func(keyCode nuikey.Key, mods nuikey.KeyModifiers) bool) {
@@ -120,6 +121,10 @@ func (c *nativeWindow) OnCloseRequest(f func() bool) {
 
 func (c *nativeWindow) OnTimer(f func()) {
 	c.onTimer = f
+}
+
+func (c *nativeWindow) OnDeactivate(f func()) {
+	c.onDeactivate = f
 }
 
 // growBuffer grows *buf to fit size bytes, if needed. Each window (and
