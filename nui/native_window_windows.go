@@ -345,6 +345,14 @@ func (c *nativeWindow) RestoreWindow() {
 	procShowWindow.Call(uintptr(c.hwnd), c_SW_RESTORE)
 }
 
+func (c *nativeWindow) SetDarkMode(dark bool) {
+	setDarkMode(uintptr(c.hwnd), dark)
+	// Redraw the frame: the title bar doesn't pick up the change by itself
+	// until the window is activated again
+	flags := c_SWP_NOMOVE | c_SWP_NOSIZE | c_SWP_NOZORDER | c_SWP_NOACTIVATE | c_SWP_FRAMECHANGED
+	procSetWindowPos.Call(uintptr(c.hwnd), 0, 0, 0, 0, 0, uintptr(flags))
+}
+
 func (c *nativeWindow) SetAlwaysOnTop(onTop bool) {
 	insertAfter := ^uintptr(1) // HWND_NOTOPMOST (-2)
 	if onTop {

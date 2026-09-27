@@ -245,6 +245,10 @@ func (c *nativeWindow) RestoreWindow() {
 	restoreWindow(c.hwnd)
 }
 
+func (c *nativeWindow) SetDarkMode(dark bool) {
+	setWindowDarkMode(c.hwnd, dark)
+}
+
 func (c *nativeWindow) SetAlwaysOnTop(onTop bool) {
 	setWindowAlwaysOnTop(c.hwnd, onTop)
 }

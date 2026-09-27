@@ -48,6 +48,9 @@ type Window interface {
 	SetAppIcon(icon *image.RGBA)
 	SetBackgroundColor(color color.RGBA)
 	SetMouseCursor(cursor nuimouse.MouseCursor)
+	// SetDarkMode switches the window frame (title bar) to its dark or light
+	// look, to match the application's theme
+	SetDarkMode(dark bool)
 
 	Move(width int, height int)
 	MoveToCenterOfScreen()

@@ -1056,6 +1056,25 @@ func setWindowAlwaysOnTop(id windowId, onTop bool) {
 	})
 }
 
+// setWindowDarkMode gives the window the dark or light (Aqua) appearance,
+// which is what its title bar is drawn with.
+func setWindowDarkMode(id windowId, dark bool) {
+	runOnMainSync(func() {
+		win, ok := cocoaWindows[int(id)]
+		if !ok {
+			return
+		}
+		name := "NSAppearanceNameAqua"
+		if dark {
+			name = "NSAppearanceNameDarkAqua"
+		}
+		withAutoreleasePool(func() {
+			appearance := objc.ID(objc.GetClass("NSAppearance")).Send(objc.RegisterName("appearanceNamed:"), goStringToNS(name))
+			win.Send(objc.RegisterName("setAppearance:"), appearance)
+		})
+	})
+}
+
 // requestUserAttention bounces the dock icon once (NSInformationalRequest)
 func requestUserAttention() {
 	runOnMainSync(func() {

@@ -924,6 +924,19 @@ func (c *nativeWindow) RestoreWindow() {
 	restoreWindowX(c.platform.display, c.platform.window)
 }
 
+// SetDarkMode sets _GTK_THEME_VARIANT, which GNOME and KDE use to draw the
+// window decorations dark or light
+func (c *nativeWindow) SetDarkMode(dark bool) {
+	variant := []byte("light")
+	if dark {
+		variant = []byte("dark")
+	}
+	utf8StringAtom := xInternAtom(c.platform.display, "UTF8_STRING", xFalse)
+	variantAtom := xInternAtom(c.platform.display, "_GTK_THEME_VARIANT", xFalse)
+	xChangeProperty(c.platform.display, c.platform.window, variantAtom, utf8StringAtom, 8, xPropModeReplace, unsafe.Pointer(&variant[0]), int32(len(variant)))
+	xFlush(c.platform.display)
+}
+
 func (c *nativeWindow) SetAlwaysOnTop(onTop bool) {
 	setNetWMState(c.platform.display, c.platform.window, onTop, "_NET_WM_STATE_ABOVE")
 }
