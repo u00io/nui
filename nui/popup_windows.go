@@ -167,6 +167,14 @@ func popupWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintp
 		}
 		return 0
 
+	case c_WM_MOUSEWHEEL:
+		// Usually goes to the focused window (the owner) instead, depending
+		// on the "scroll inactive windows" setting
+		if p != nil {
+			p.mouseWheel(0, int(int16((wParam>>16)&0xFFFF)/120))
+		}
+		return 0
+
 	case c_WM_LBUTTONDOWN, c_WM_RBUTTONDOWN, c_WM_MBUTTONDOWN:
 		if p != nil {
 			p.mouseButtonDown(popupMouseButton(msg), x, y)

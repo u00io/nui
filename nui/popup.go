@@ -21,6 +21,7 @@ type PopupWindow interface {
 	OnMouseButtonDown(func(btn nuimouse.MouseButton, x, y int))
 	OnMouseButtonUp(func(btn nuimouse.MouseButton, x, y int))
 	OnMouseLeave(func())
+	OnMouseWheel(func(deltaX, deltaY int))
 
 	// ShowAt moves the popup to (x, y) in screen coordinates, resizes it and
 	// shows it without activating it
@@ -44,6 +45,7 @@ type popupCallbacks struct {
 	onMouseButtonDown func(btn nuimouse.MouseButton, x, y int)
 	onMouseButtonUp   func(btn nuimouse.MouseButton, x, y int)
 	onMouseLeave      func()
+	onMouseWheel      func(deltaX, deltaY int)
 }
 
 func (c *popupCallbacks) OnPaint(f func(rgba *image.RGBA)) {
@@ -64,6 +66,10 @@ func (c *popupCallbacks) OnMouseButtonUp(f func(btn nuimouse.MouseButton, x, y i
 
 func (c *popupCallbacks) OnMouseLeave(f func()) {
 	c.onMouseLeave = f
+}
+
+func (c *popupCallbacks) OnMouseWheel(f func(deltaX, deltaY int)) {
+	c.onMouseWheel = f
 }
 
 func (c *popupCallbacks) mouseMove(x, y int) {
@@ -87,5 +93,11 @@ func (c *popupCallbacks) mouseButtonUp(btn nuimouse.MouseButton, x, y int) {
 func (c *popupCallbacks) mouseLeave() {
 	if c.onMouseLeave != nil {
 		c.onMouseLeave()
+	}
+}
+
+func (c *popupCallbacks) mouseWheel(deltaX, deltaY int) {
+	if c.onMouseWheel != nil {
+		c.onMouseWheel(deltaX, deltaY)
 	}
 }

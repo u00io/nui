@@ -132,7 +132,20 @@ func (p *popupWindow) processEvent(event *xEvent) {
 		case 3:
 			btn = nuimouse.MouseButtonRight
 		default:
-			return // wheel
+			// Wheel: buttons 4-7 press and release at once, one step each
+			if event.eventType() == xButtonPress {
+				switch buttonEvent.Button {
+				case 4:
+					p.mouseWheel(0, 1)
+				case 5:
+					p.mouseWheel(0, -1)
+				case 6:
+					p.mouseWheel(1, 0)
+				case 7:
+					p.mouseWheel(-1, 0)
+				}
+			}
+			return
 		}
 		if event.eventType() == xButtonPress {
 			p.mouseButtonDown(btn, int(buttonEvent.X), int(buttonEvent.Y))

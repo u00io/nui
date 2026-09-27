@@ -101,6 +101,7 @@ func registerPopupViewClass() {
 			{Cmd: selMouseDragged, Fn: nuiPopupViewMouseMoved},
 			{Cmd: selRightMouseDragged, Fn: nuiPopupViewMouseMoved},
 			{Cmd: selMouseExited, Fn: nuiPopupViewMouseExited},
+			{Cmd: selScrollWheel, Fn: nuiPopupViewScrollWheel},
 			{Cmd: selUpdateTrackingAreas, Fn: nuiViewUpdateTrackingAreas},
 		},
 	)
@@ -205,6 +206,18 @@ func nuiPopupViewOtherMouseUp(self objc.ID, _ objc.SEL, event objc.ID) {
 func nuiPopupViewMouseMoved(self objc.ID, _ objc.SEL, event objc.ID) {
 	if p, ok := popups[self]; ok {
 		p.mouseMove(popupEventLocation(self, event))
+	}
+}
+
+func nuiPopupViewScrollWheel(self objc.ID, _ objc.SEL, event objc.ID) {
+	p, ok := popups[self]
+	if !ok {
+		return
+	}
+	dx := wheelStep(objc.Send[float64](event, selDeltaX))
+	dy := wheelStep(objc.Send[float64](event, selDeltaY))
+	if dx != 0 || dy != 0 {
+		p.mouseWheel(dx, dy)
 	}
 }
 

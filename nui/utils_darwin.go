@@ -342,25 +342,20 @@ func (c *nativeWindow) windowResized(width, height int) {
 }
 
 func (c *nativeWindow) windowMouseWheel(deltaX, deltaY float64) {
-	deltaXInt := 0
-	if deltaX > 0.2 {
-		deltaXInt = 1
-	}
-	if deltaX < -0.2 {
-		deltaXInt = -1
-	}
-
-	deltaYInt := 0
-	if deltaY > 0.2 {
-		deltaYInt = 1
-	}
-	if deltaY < -0.2 {
-		deltaYInt = -1
-	}
-
 	if c.onMouseWheel != nil {
-		c.onMouseWheel(deltaXInt, deltaYInt)
+		c.onMouseWheel(wheelStep(deltaX), wheelStep(deltaY))
 	}
+}
+
+// wheelStep turns a scroll delta into one wheel step: -1, 0 or 1.
+func wheelStep(delta float64) int {
+	if delta > 0.2 {
+		return 1
+	}
+	if delta < -0.2 {
+		return -1
+	}
+	return 0
 }
 
 func (c *nativeWindow) windowMouseEnter() {
