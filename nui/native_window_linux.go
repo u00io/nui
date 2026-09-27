@@ -10,6 +10,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"os"
+	"os/exec"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -897,6 +899,47 @@ func (c *nativeWindow) MaximizeWindow() {
 
 func (c *nativeWindow) RestoreWindow() {
 	restoreWindowX(c.platform.display, c.platform.window)
+}
+
+func (c *nativeWindow) SetAlwaysOnTop(onTop bool) {
+	setNetWMState(c.platform.display, c.platform.window, onTop, "_NET_WM_STATE_ABOVE")
+}
+
+// RequestAttention sets _NET_WM_STATE_DEMANDS_ATTENTION; the window manager
+// clears it when the window gets focus
+func (c *nativeWindow) RequestAttention() {
+	setNetWMState(c.platform.display, c.platform.window, true, "_NET_WM_STATE_DEMANDS_ATTENTION")
+}
+
+// Beep plays the bell of the desktop sound theme. The X11 bell (XBell) is silent
+// on most systems today - it needs a PC speaker or a sound server module that
+// is usually not loaded - so it is only the fallback when no sound can be played.
+func (c *nativeWindow) Beep() {
+	if player, args, ok := bellSoundCommand(); ok {
+		go exec.Command(player, args...).Run()
+		return
+	}
+	xBell(c.platform.display, 0)
+	xFlush(c.platform.display)
+}
+
+const bellSoundFile = "/usr/share/sounds/freedesktop/stereo/bell.oga"
+
+// bellSoundCommand finds a way to play the bell sound: canberra-gtk-play uses the
+// desktop sound theme (and its mute setting), pw-play and paplay play the file
+func bellSoundCommand() (player string, args []string, ok bool) {
+	if p, err := exec.LookPath("canberra-gtk-play"); err == nil {
+		return p, []string{"--id=bell"}, true
+	}
+	if _, err := os.Stat(bellSoundFile); err != nil {
+		return "", nil, false
+	}
+	for _, name := range []string{"pw-play", "paplay"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return p, []string{bellSoundFile}, true
+		}
+	}
+	return "", nil, false
 }
 
 // SetAllowMinimize shows or hides the titlebar's minimize button via

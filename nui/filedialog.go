@@ -1,5 +1,11 @@
 package nui
 
+import "errors"
+
+// ErrNoFileDialog is returned when the system has no file dialog to show,
+// e.g. Linux without zenity or kdialog
+var ErrNoFileDialog = errors.New("nui: no file dialog helper found (install zenity or kdialog)")
+
 // FileDialogFilter restricts an open-file dialog to a named group of file
 // patterns, e.g. {DisplayName: "Text files", Patterns: []string{"*.txt", "*.md"}}.
 type FileDialogFilter struct {

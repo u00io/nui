@@ -47,6 +47,8 @@ var (
 	procPostMessageW   = user32.NewProc("PostMessageW")
 	procSetWindowTextW = user32.NewProc("SetWindowTextW")
 	procSetWindowPos   = user32.NewProc("SetWindowPos")
+	procFlashWindowEx  = user32.NewProc("FlashWindowEx")
+	procMessageBeep    = user32.NewProc("MessageBeep")
 
 	procLoadCursorW = user32.NewProc("LoadCursorW")
 	procSetCursor   = user32.NewProc("SetCursor")

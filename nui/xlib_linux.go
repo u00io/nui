@@ -327,6 +327,7 @@ var (
 	xSendEvent            func(display, window uintptr, propagate int32, eventMask int64, event unsafe.Pointer) int32
 	xSetTransientForHint  func(display, window, propWindow uintptr) int32
 	xIconifyWindow        func(display, window uintptr, screenNumber int32) int32
+	xBell                 func(display uintptr, percent int32) int32
 	xInitThreads          func() int32
 
 	libcSetlocale func(category int32, locale string) uintptr
@@ -412,6 +413,7 @@ func init() {
 	purego.RegisterLibFunc(&xSendEvent, libX11, "XSendEvent")
 	purego.RegisterLibFunc(&xSetTransientForHint, libX11, "XSetTransientForHint")
 	purego.RegisterLibFunc(&xIconifyWindow, libX11, "XIconifyWindow")
+	purego.RegisterLibFunc(&xBell, libX11, "XBell")
 	purego.RegisterLibFunc(&xInitThreads, libX11, "XInitThreads")
 
 	purego.RegisterLibFunc(&libcSetlocale, libc, "setlocale")
@@ -459,6 +461,24 @@ func setNetWMStateMaximized(display, window uintptr, add bool) {
 
 	root := xDefaultRootWindow(display)
 	xSendEvent(display, root, xFalse, xSubstructureRedirectMask|xSubstructureNotifyMask, unsafe.Pointer(&ev))
+}
+
+// setNetWMState asks the window manager to add or remove a _NET_WM_STATE_* state
+func setNetWMState(display, window uintptr, add bool, state string) {
+	var ev xClientMessageEvent
+	ev.Type = xClientMessage
+	ev.SendEvent = xTrue
+	ev.Window = window
+	ev.MessageType = xInternAtom(display, "_NET_WM_STATE", xFalse)
+	ev.Format = 32
+	if add {
+		ev.setDataLong(0, 1) // _NET_WM_STATE_ADD
+	}
+	ev.setDataLong(1, int64(xInternAtom(display, state, xFalse)))
+
+	root := xDefaultRootWindow(display)
+	xSendEvent(display, root, xFalse, xSubstructureRedirectMask|xSubstructureNotifyMask, unsafe.Pointer(&ev))
+	xFlush(display)
 }
 
 func maximizeWindowX(display, window uintptr) {

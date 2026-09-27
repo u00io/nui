@@ -280,12 +280,16 @@ var (
 	objcAutoreleasePoolPopFn  func(ctx uintptr)
 
 	libcStrlen func(ptr uintptr) uintptr
+
+	nsBeepFn func()
 )
 
 func init() {
-	if _, err := purego.Dlopen("/System/Library/Frameworks/AppKit.framework/AppKit", purego.RTLD_NOW|purego.RTLD_GLOBAL); err != nil {
+	appKitHandle, err := purego.Dlopen("/System/Library/Frameworks/AppKit.framework/AppKit", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+	if err != nil {
 		panic(err)
 	}
+	purego.RegisterLibFunc(&nsBeepFn, appKitHandle, "NSBeep")
 	if _, err := purego.Dlopen("/System/Library/Frameworks/Foundation.framework/Foundation", purego.RTLD_NOW|purego.RTLD_GLOBAL); err != nil {
 		panic(err)
 	}
@@ -1024,6 +1028,32 @@ func maximizeWindow(id windowId) {
 	if !objc.Send[bool](win, selIsZoomed) {
 		win.Send(selZoom, objc.ID(0))
 	}
+}
+
+// setWindowAlwaysOnTop puts the window on the floating level (above normal windows)
+func setWindowAlwaysOnTop(id windowId, onTop bool) {
+	runOnMainSync(func() {
+		win, ok := cocoaWindows[int(id)]
+		if !ok {
+			return
+		}
+		level := 0 // NSNormalWindowLevel
+		if onTop {
+			level = 3 // NSFloatingWindowLevel
+		}
+		win.Send(objc.RegisterName("setLevel:"), level)
+	})
+}
+
+// requestUserAttention bounces the dock icon once (NSInformationalRequest)
+func requestUserAttention() {
+	runOnMainSync(func() {
+		objc.ID(clsNSApplication).Send(selSharedApplication).Send(objc.RegisterName("requestUserAttention:"), 10)
+	})
+}
+
+func systemBeep() {
+	runOnMainSync(func() { nsBeepFn() })
 }
 
 // restoreWindow un-zooms a zoomed window; zoom: toggles, so it is only sent when zoomed

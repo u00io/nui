@@ -241,6 +241,18 @@ func (c *nativeWindow) RestoreWindow() {
 	restoreWindow(c.hwnd)
 }
 
+func (c *nativeWindow) SetAlwaysOnTop(onTop bool) {
+	setWindowAlwaysOnTop(c.hwnd, onTop)
+}
+
+func (c *nativeWindow) RequestAttention() {
+	requestUserAttention()
+}
+
+func (c *nativeWindow) Beep() {
+	systemBeep()
+}
+
 // SetAllowMinimize shows or hides the titlebar's miniaturize button, e.g. for
 // dialog-style windows that shouldn't offer it.
 func (c *nativeWindow) SetAllowMinimize(allow bool) {

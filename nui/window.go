@@ -54,6 +54,12 @@ type Window interface {
 	// RestoreWindow returns a maximized window to its normal size
 	RestoreWindow()
 	IsMaximized() bool
+	// SetAlwaysOnTop keeps the window above the other windows
+	SetAlwaysOnTop(onTop bool)
+	// RequestAttention marks the window in the taskbar/dock until the user looks at it
+	RequestAttention()
+	// Beep plays the system alert sound
+	Beep()
 
 	SetAllowMinimize(allow bool)
 	SetAllowMaximize(allow bool)

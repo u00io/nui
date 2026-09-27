@@ -345,6 +345,34 @@ func (c *nativeWindow) RestoreWindow() {
 	procShowWindow.Call(uintptr(c.hwnd), c_SW_RESTORE)
 }
 
+func (c *nativeWindow) SetAlwaysOnTop(onTop bool) {
+	insertAfter := ^uintptr(1) // HWND_NOTOPMOST (-2)
+	if onTop {
+		insertAfter = ^uintptr(0) // HWND_TOPMOST (-1)
+	}
+	procSetWindowPos.Call(uintptr(c.hwnd), insertAfter, 0, 0, 0, 0,
+		uintptr(c_SWP_NOMOVE|c_SWP_NOSIZE|c_SWP_NOACTIVATE))
+}
+
+// RequestAttention flashes the taskbar button until the window comes to the foreground
+func (c *nativeWindow) RequestAttention() {
+	const flashwTray, flashwTimerNoFG = 0x2, 0xC
+	info := struct {
+		cbSize    uint32
+		hwnd      uintptr
+		dwFlags   uint32
+		uCount    uint32
+		dwTimeout uint32
+	}{hwnd: uintptr(c.hwnd), dwFlags: flashwTray | flashwTimerNoFG}
+	info.cbSize = uint32(unsafe.Sizeof(info))
+	procFlashWindowEx.Call(uintptr(unsafe.Pointer(&info)))
+}
+
+func (c *nativeWindow) Beep() {
+	const mbIconExclamation = 0x30
+	procMessageBeep.Call(mbIconExclamation)
+}
+
 // SetAllowMinimize shows or hides the titlebar's minimize button by toggling
 // WS_MINIMIZEBOX, e.g. for dialog-style windows that shouldn't offer it.
 func (c *nativeWindow) SetAllowMinimize(allow bool) {

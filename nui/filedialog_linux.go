@@ -5,12 +5,9 @@ package nui
 
 import (
 	"bytes"
-	"errors"
 	"os/exec"
 	"strings"
 )
-
-var errNoDialogHelper = errors.New("nui: no file dialog helper found (install zenity or kdialog)")
 
 // openFileDialog shells out to the desktop's own file-picker helper: zenity
 // (GTK/GNOME) if present, else kdialog (Qt/KDE). Neither X11 nor GTK is
@@ -24,7 +21,7 @@ func openFileDialog(parent Window, opts OpenFileDialogOptions) ([]string, error)
 	if bin, err := exec.LookPath("kdialog"); err == nil {
 		return openFileDialogKdialog(bin, opts)
 	}
-	return nil, errNoDialogHelper
+	return nil, ErrNoFileDialog
 }
 
 func saveFileDialog(parent Window, opts SaveFileDialogOptions) (string, error) {
@@ -34,7 +31,7 @@ func saveFileDialog(parent Window, opts SaveFileDialogOptions) (string, error) {
 	if bin, err := exec.LookPath("kdialog"); err == nil {
 		return saveFileDialogKdialog(bin, opts)
 	}
-	return "", errNoDialogHelper
+	return "", ErrNoFileDialog
 }
 
 func selectDirectoryDialog(parent Window, opts SelectDirectoryDialogOptions) (string, error) {
@@ -44,7 +41,7 @@ func selectDirectoryDialog(parent Window, opts SelectDirectoryDialogOptions) (st
 	if bin, err := exec.LookPath("kdialog"); err == nil {
 		return selectDirectoryDialogKdialog(bin, opts)
 	}
-	return "", errNoDialogHelper
+	return "", ErrNoFileDialog
 }
 
 func openFileDialogZenity(bin string, opts OpenFileDialogOptions) ([]string, error) {
