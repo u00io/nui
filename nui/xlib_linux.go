@@ -31,10 +31,12 @@ import (
 )
 
 const (
-	xNone           = 0
-	xCopyFromParent = 0
-	xInputOutput    = 1
-	xCWBackPixmap   = 1 << 0
+	xNone               = 0
+	xCopyFromParent     = 0
+	xInputOutput        = 1
+	xCWBackPixmap       = 1 << 0
+	xCWOverrideRedirect = 1 << 9
+	xCWSaveUnder        = 1 << 10
 
 	xKeyPressMask        = 1 << 0
 	xKeyReleaseMask      = 1 << 1
@@ -136,6 +138,11 @@ type xEvent [192]byte
 
 func (e *xEvent) eventType() int32 {
 	return *(*int32)(unsafe.Pointer(e))
+}
+
+// window returns the XAnyEvent.window field: the window the event was reported for.
+func (e *xEvent) window() uintptr {
+	return (*xKeyEvent)(unsafe.Pointer(e)).Window
 }
 
 type xKeyEvent struct {
@@ -329,6 +336,8 @@ var (
 	xIconifyWindow        func(display, window uintptr, screenNumber int32) int32
 	xBell                 func(display uintptr, percent int32) int32
 	xInitThreads          func() int32
+	xMapRaised            func(display, window uintptr) int32
+	xUnmapWindow          func(display, window uintptr) int32
 
 	libcSetlocale func(category int32, locale string) uintptr
 	libcMalloc    func(size uintptr) uintptr
@@ -342,6 +351,11 @@ var (
 	xineramaAvailable    bool
 	xineramaIsActive     func(display uintptr) int32
 	xineramaQueryScreens func(display uintptr, numberReturn unsafe.Pointer) unsafe.Pointer
+
+	// XShape (libXext) is optional too: it only makes popups transparent to
+	// the mouse (see createPopupWindow).
+	xShapeAvailable         bool
+	xShapeCombineRectangles func(display, window uintptr, destKind, xOff, yOff int32, rectangles unsafe.Pointer, nRects, op, ordering int32)
 )
 
 // XineramaScreenInfo, field order per X11/extensions/Xinerama.h.
@@ -415,6 +429,8 @@ func init() {
 	purego.RegisterLibFunc(&xIconifyWindow, libX11, "XIconifyWindow")
 	purego.RegisterLibFunc(&xBell, libX11, "XBell")
 	purego.RegisterLibFunc(&xInitThreads, libX11, "XInitThreads")
+	purego.RegisterLibFunc(&xMapRaised, libX11, "XMapRaised")
+	purego.RegisterLibFunc(&xUnmapWindow, libX11, "XUnmapWindow")
 
 	purego.RegisterLibFunc(&libcSetlocale, libc, "setlocale")
 	purego.RegisterLibFunc(&libcMalloc, libc, "malloc")
@@ -429,6 +445,11 @@ func init() {
 		purego.RegisterLibFunc(&xineramaIsActive, h, "XineramaIsActive")
 		purego.RegisterLibFunc(&xineramaQueryScreens, h, "XineramaQueryScreens")
 		xineramaAvailable = true
+	}
+
+	if h, err := dlopenFirst("libXext.so.6", "libXext.so"); err == nil {
+		purego.RegisterLibFunc(&xShapeCombineRectangles, h, "XShapeCombineRectangles")
+		xShapeAvailable = true
 	}
 }
 
@@ -571,6 +592,48 @@ func setWindowDecorationsX(display, window uintptr, allowMinimize, allowMaximize
 
 	xChangeProperty(display, window, motifHints, motifHints, 32, xPropModeReplace, unsafe.Pointer(&hints), 5)
 	xFlush(display)
+}
+
+// netWorkAreaX reads the first desktop's _NET_WORKAREA from the root window:
+// the virtual desktop minus panels/docks, as set by the window manager.
+func netWorkAreaX(display uintptr, screen int32) (x, y, width, height int, ok bool) {
+	atom := xInternAtom(display, "_NET_WORKAREA", xTrue)
+	if atom == xNone {
+		return 0, 0, 0, 0, false
+	}
+
+	var actualType uintptr
+	var actualFormat int32
+	var nitems uintptr
+	var bytesAfter uintptr
+	var prop unsafe.Pointer
+
+	status := xGetWindowProperty(
+		display,
+		xRootWindow(display, screen),
+		atom,
+		0,
+		4,
+		xFalse,
+		xXACardinal,
+		unsafe.Pointer(&actualType),
+		unsafe.Pointer(&actualFormat),
+		unsafe.Pointer(&nitems),
+		unsafe.Pointer(&bytesAfter),
+		unsafe.Pointer(&prop),
+	)
+	if status != xSuccess || prop == nil {
+		return 0, 0, 0, 0, false
+	}
+	defer xFree(prop)
+
+	if actualType != xXACardinal || actualFormat != 32 || nitems < 4 {
+		return 0, 0, 0, 0, false
+	}
+
+	// Format 32 properties come back as C longs
+	data := (*[4]uintptr)(prop)
+	return int(data[0]), int(data[1]), int(data[2]), int(data[3]), true
 }
 
 // monitorRectForWindow returns the bounds of the monitor that contains the

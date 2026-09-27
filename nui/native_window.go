@@ -121,3 +121,15 @@ func (c *nativeWindow) OnCloseRequest(f func() bool) {
 func (c *nativeWindow) OnTimer(f func()) {
 	c.onTimer = f
 }
+
+// growBuffer grows *buf to fit size bytes, if needed. Each window (and
+// popup) owns its buffers, so concurrent paints on different windows never
+// share memory.
+func growBuffer(buf *[]byte, size int) []byte {
+	if cap(*buf) < size {
+		*buf = make([]byte, size)
+	} else {
+		*buf = (*buf)[:size]
+	}
+	return *buf
+}

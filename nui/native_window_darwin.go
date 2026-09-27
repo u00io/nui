@@ -321,3 +321,18 @@ func (c *nativeWindow) DrawTimeUs() int64 {
 func (c *nativeWindow) SystemHandle() any {
 	return nil
 }
+
+func (c *nativeWindow) ClientToScreen(x, y int) (int, int) {
+	var originX, originY int
+	runOnMainSync(func() {
+		originX, originY = getClientOrigin(c.hwnd)
+	})
+	return originX + x, originY + y
+}
+
+func (c *nativeWindow) ScreenWorkArea(x, y int) (areaX, areaY, areaW, areaH int) {
+	runOnMainSync(func() {
+		areaX, areaY, areaW, areaH = getScreenWorkArea(x, y)
+	})
+	return
+}

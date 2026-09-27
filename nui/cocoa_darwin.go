@@ -164,7 +164,9 @@ var (
 	selStringWithUTF8String = objc.RegisterName("stringWithUTF8String:")
 	selUTF8String           = objc.RegisterName("UTF8String")
 
-	selMainScreen = objc.RegisterName("mainScreen")
+	selMainScreen   = objc.RegisterName("mainScreen")
+	selScreens      = objc.RegisterName("screens")
+	selVisibleFrame = objc.RegisterName("visibleFrame")
 
 	selArrowCursor           = objc.RegisterName("arrowCursor")
 	selPointingHandCursor    = objc.RegisterName("pointingHandCursor")
@@ -1148,6 +1150,58 @@ func getWindowHeight(id windowId) int {
 	}
 	lr := objc.Send[nsRect](win, selContentLayoutRect)
 	return int(math.Floor(lr.Size.Height))
+}
+
+// getClientOrigin: top-left of the client area (contentLayoutRect, the same
+// rect mouse coordinates are relative to) in global top-down coordinates
+// (see cocoaToTopDownY).
+func getClientOrigin(id windowId) (int, int) {
+	win, ok := cocoaWindows[int(id)]
+	if !ok {
+		return 0, 0
+	}
+	frame := objc.Send[nsRect](win, selFrame)
+	lr := objc.Send[nsRect](win, selContentLayoutRect)
+	top := frame.Origin.Y + lr.Origin.Y + lr.Size.Height
+	return int(frame.Origin.X + lr.Origin.X), int(cocoaToTopDownY(top))
+}
+
+// primaryScreenHeight is the height of the screen with the menu bar
+// (screens[0]): Cocoa's global coordinates have their origin at its
+// bottom-left corner, on every monitor.
+func primaryScreenHeight() float64 {
+	screens := objc.ID(clsNSScreen).Send(selScreens)
+	if objc.Send[int](screens, selCount) == 0 {
+		return float64(getScreenHeight())
+	}
+	primary := objc.Send[objc.ID](screens, selObjectAtIndex, 0)
+	return objc.Send[nsRect](primary, selFrame).Size.Height
+}
+
+// cocoaToTopDownY flips a global Cocoa Y (up from the primary screen's
+// bottom) to top-down, like on Windows/X11. The same formula converts back.
+func cocoaToTopDownY(y float64) float64 {
+	return primaryScreenHeight() - y
+}
+
+// getScreenWorkArea: visibleFrame (without menu bar and dock) of the screen
+// containing the top-down point (x, y), or of the main screen.
+func getScreenWorkArea(x, y int) (int, int, int, int) {
+	pt := nsPoint{float64(x), cocoaToTopDownY(float64(y))}
+	screen := objc.ID(clsNSScreen).Send(selMainScreen)
+	screens := objc.ID(clsNSScreen).Send(selScreens)
+	for i := 0; i < objc.Send[int](screens, selCount); i++ {
+		s := objc.Send[objc.ID](screens, selObjectAtIndex, i)
+		f := objc.Send[nsRect](s, selFrame)
+		if pt.X >= f.Origin.X && pt.X < f.Origin.X+f.Size.Width &&
+			pt.Y >= f.Origin.Y && pt.Y < f.Origin.Y+f.Size.Height {
+			screen = s
+			break
+		}
+	}
+	vf := objc.Send[nsRect](screen, selVisibleFrame)
+	top := cocoaToTopDownY(vf.Origin.Y + vf.Size.Height)
+	return int(vf.Origin.X), int(top), int(vf.Size.Width), int(vf.Size.Height)
 }
 
 // getClientAreaWidth/Height: identical to getWindowWidth/Height on Darwin.

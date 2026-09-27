@@ -299,6 +299,14 @@ func (c *nativeWindow) pumpEvents() {
 				break
 			}
 
+			// Popups share this window's Display, so their events arrive here
+			if w := event.window(); w != c.platform.window {
+				if p := getPopupByWindow(w); p != nil {
+					p.processEvent(&event)
+					continue
+				}
+			}
+
 			{
 				_, _, _, _, ok := c.getFrameExtents()
 				if ok {
@@ -672,6 +680,8 @@ func (c *nativeWindow) Close() bool {
 // doClose performs the actual Xlib teardown. Must only be called from the
 // window's own Exec goroutine.
 func (c *nativeWindow) doClose() {
+	// Popups live on this window's Display, which is about to close
+	closePopupsOf(c)
 	xDestroyWindow(c.platform.display, c.platform.window)
 	xCloseDisplay(c.platform.display)
 	c.platform.closed = true
@@ -1026,12 +1036,15 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 }
 
 func (c *nativeWindow) drawImageRGBA(display uintptr, window uintptr, img image.Image) {
-	width := c.windowWidth
-	height := c.windowHeight
+	putImageRGBA(display, window, img.(*image.RGBA), c.windowWidth, c.windowHeight)
+}
 
+// putImageRGBA copies the top-left width x height pixels of img to window.
+// Swaps img's channels to BGRA in place.
+func putImageRGBA(display uintptr, window uintptr, img *image.RGBA, width, height int) {
 	dataSize := width * height * 4
 
-	rgba := img.(*image.RGBA).Pix
+	rgba := img.Pix
 
 	// RGBA->BGRA
 	pixelsCount := width * height
@@ -1166,4 +1179,41 @@ func (c *nativeWindow) updateWindowPos() {
 
 	c.windowPosX = int(x)
 	c.windowPosY = int(y)
+}
+
+func (c *nativeWindow) ClientToScreen(x, y int) (int, int) {
+	display := c.platform.display
+	root := xRootWindow(display, c.platform.screen)
+
+	var sx, sy int32
+	var child uintptr
+
+	if xTranslateCoordinates(
+		display,
+		c.platform.window,
+		root,
+		int32(x), int32(y),
+		unsafe.Pointer(&sx), unsafe.Pointer(&sy),
+		unsafe.Pointer(&child),
+	) == 0 {
+		return c.windowPosX + x, c.windowPosY + y
+	}
+	return int(sx), int(sy)
+}
+
+// ScreenWorkArea intersects the monitor with _NET_WORKAREA. The latter is a
+// single rect over the whole virtual desktop, so this cuts off panels along
+// the outer edges of the desktop, but not ones between monitors.
+func (c *nativeWindow) ScreenWorkArea(x, y int) (int, int, int, int) {
+	mx, my, mw, mh := monitorRectForWindow(c.platform.display, c.platform.screen, x, y, 1, 1)
+	wx, wy, ww, wh, ok := netWorkAreaX(c.platform.display, c.platform.screen)
+	if !ok {
+		return mx, my, mw, mh
+	}
+	left, top := max(mx, wx), max(my, wy)
+	right, bottom := min(mx+mw, wx+ww), min(my+mh, wy+wh)
+	if right <= left || bottom <= top {
+		return mx, my, mw, mh
+	}
+	return left, top, right - left, bottom - top
 }

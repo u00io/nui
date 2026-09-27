@@ -73,4 +73,10 @@ type Window interface {
 	Height() int
 	KeyModifiers() nuikey.KeyModifiers
 	DrawTimeUs() int64
+
+	// ClientToScreen converts a point in the window's client area to screen coordinates
+	ClientToScreen(x, y int) (screenX, screenY int)
+	// ScreenWorkArea returns the usable area (without taskbar/dock) of the
+	// monitor containing the screen point (x, y)
+	ScreenWorkArea(x, y int) (areaX, areaY, areaWidth, areaHeight int)
 }

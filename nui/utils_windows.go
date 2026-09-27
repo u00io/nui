@@ -277,23 +277,22 @@ func getHDCSize(hdc uintptr) (width int32, height int32) {
 
 const chunkHeight = 100
 
-// ensurePixBuffer grows this window's own RGBA->BGRA scratch buffer to fit
-// size bytes, if needed. Per-window, like ensureCanvasBuffer, so concurrent
-// paints on different windows never share memory.
+// ensurePixBuffer grows this window's own RGBA->BGRA scratch buffer.
 func (c *nativeWindow) ensurePixBuffer(size int) []byte {
-	if cap(c.platform.pixBuffer) < size {
-		c.platform.pixBuffer = make([]byte, size)
-	} else {
-		c.platform.pixBuffer = c.platform.pixBuffer[:size]
-	}
-	return c.platform.pixBuffer
+	return growBuffer(&c.platform.pixBuffer, size)
 }
 
 func (c *nativeWindow) drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
+	drawRGBAToHDC(img, hdc, width, height, &c.platform.pixBuffer)
+}
+
+// drawRGBAToHDC blits img to hdc, converting RGBA->BGRA in chunks through
+// the caller's scratch buffer.
+func drawRGBAToHDC(img *image.RGBA, hdc uintptr, width, height int32, scratch *[]byte) {
 	imgStride := img.Stride
 	totalHeight := int(height)
 
-	pixBuffer := c.ensurePixBuffer(int(width) * 4 * chunkHeight)
+	pixBuffer := growBuffer(scratch, int(width)*4*chunkHeight)
 
 	for y := 0; y < totalHeight; y += chunkHeight {
 		h := chunkHeight
@@ -356,12 +355,7 @@ const maxCanvasHeight = 4000
 
 // ensureCanvasBuffer grows this window's own paint buffer to fit size bytes, if needed.
 func (c *nativeWindow) ensureCanvasBuffer(size int) []byte {
-	if cap(c.platform.canvasBuffer) < size {
-		c.platform.canvasBuffer = make([]byte, size)
-	} else {
-		c.platform.canvasBuffer = c.platform.canvasBuffer[:size]
-	}
-	return c.platform.canvasBuffer
+	return growBuffer(&c.platform.canvasBuffer, size)
 }
 
 // fillCanvasBuffer paints buf with this window's solid background color.
@@ -430,6 +424,10 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		}
 
 		return 0
+
+	case c_WM_NUI_CREATE_POPUP:
+		// Popups are created on their owner's thread (see createPopupWindow)
+		return createPopupHwnd(hwnd)
 
 	case c_WM_DESTROY:
 		procKillTimer.Call(uintptr(hwnd), timerID1ms)

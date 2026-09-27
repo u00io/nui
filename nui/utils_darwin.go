@@ -43,6 +43,7 @@ func go_on_close_request(hwnd windowId) bool {
 }
 
 func go_on_window_will_close(hwnd windowId) {
+	closePopupsOf(hwnd)
 	delete(hwnds, hwnd)
 	if mainWindowIDSet && hwnd == mainWindowID {
 		quitApp()

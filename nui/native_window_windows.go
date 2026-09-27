@@ -463,3 +463,25 @@ func (c *nativeWindow) DrawTimeUs() int64 {
 func (c *nativeWindow) SystemHandle() any {
 	return syscall.Handle(c.hwnd)
 }
+
+func (c *nativeWindow) ClientToScreen(x, y int) (int, int) {
+	pt := struct{ x, y int32 }{int32(x), int32(y)}
+	procClientToScreen.Call(uintptr(c.hwnd), uintptr(unsafe.Pointer(&pt)))
+	return int(pt.x), int(pt.y)
+}
+
+func (c *nativeWindow) ScreenWorkArea(x, y int) (int, int, int, int) {
+	// MonitorFromRect instead of MonitorFromPoint: POINT is passed by value
+	// there, which doesn't map onto syscall's uintptr arguments portably.
+	r := rect{int32(x), int32(y), int32(x + 1), int32(y + 1)}
+	hMonitor, _, _ := procMonitorFromRect.Call(uintptr(unsafe.Pointer(&r)), c_MONITOR_DEFAULTTONEAREST)
+
+	mi := t_MONITORINFO{cbSize: uint32(unsafe.Sizeof(t_MONITORINFO{}))}
+	ret, _, _ := procGetMonitorInfoW.Call(hMonitor, uintptr(unsafe.Pointer(&mi)))
+	if ret == 0 {
+		w, h := getScreenSize()
+		return 0, 0, w, h
+	}
+	work := mi.rcWork
+	return int(work.left), int(work.top), int(work.right - work.left), int(work.bottom - work.top)
+}
