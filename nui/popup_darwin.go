@@ -23,7 +23,6 @@ var (
 	selSetReleasedWhenClosed = objc.RegisterName("setReleasedWhenClosed:")
 	selOrderFront            = objc.RegisterName("orderFront:")
 	selOrderOut              = objc.RegisterName("orderOut:")
-	selClose                 = objc.RegisterName("close")
 	selAcceptsFirstMouse     = objc.RegisterName("acceptsFirstMouse:")
 
 	nuiPopupViewClass     objc.Class
@@ -50,6 +49,18 @@ type popupWindow struct {
 // Main thread only, like cocoaWindows.
 var popups = map[objc.ID]*popupWindow{}
 
+// popupNative is an NSWindow of a popup with its content view.
+type popupNative struct {
+	win  objc.ID
+	view objc.ID
+}
+
+// freePopupNatives are the windows of closed popups, hidden and ready for
+// the next CreatePopupWindow. Closed windows can't be released (see close),
+// so reusing them keeps their number at the most popups ever open at once
+// instead of growing with every closed form. Main thread only.
+var freePopupNatives []popupNative
+
 func createPopupWindow(owner Window, interactive bool) PopupWindow {
 	o, ok := owner.(*nativeWindow)
 	if !ok || o == nil {
@@ -60,29 +71,46 @@ func createPopupWindow(owner Window, interactive bool) PopupWindow {
 		return nil
 	}
 
+	// A new popupWindow even for a reused NSWindow: whoever closed the old
+	// one may still hold it, and its methods must stay no-ops
 	p := &popupWindow{owner: o.hwnd}
 	runOnMainSync(func() {
-		withAutoreleasePool(func() {
-			frame := nsRect{nsPoint{0, 0}, nsSize{1, 1}}
-			win := objc.ID(clsNSWindow).Send(selAlloc)
-			win = win.Send(selInitWithContentRectStyleMaskBackingDefer, frame, nsWindowStyleMaskBorderless, nsBackingStoreBuffered, false)
-			win.Send(selSetReleasedWhenClosed, false)
-			win.Send(selSetLevel, nsPopUpMenuWindowLevel)
-			// A tooltip lets the mouse through to the owner, which keeps its
-			// hover state
-			win.Send(selSetIgnoresMouseEvents, !interactive)
-			win.Send(selSetHasShadow, true)
+		native := takePopupNative()
+		// A tooltip lets the mouse through to the owner, which keeps its
+		// hover state
+		native.win.Send(selSetIgnoresMouseEvents, !interactive)
 
-			view := objc.ID(nuiPopupViewClass).Send(selAlloc).Send(selInitWithFrame, frame)
-			win.Send(selSetContentView, view)
-			view.Send(selRelease) // the window keeps it
-
-			p.win = win
-			p.view = view
-			popups[view] = p
-		})
+		p.win = native.win
+		p.view = native.view
+		popups[native.view] = p
 	})
 	return p
+}
+
+// takePopupNative reuses the window of a closed popup or creates one.
+func takePopupNative() popupNative {
+	if n := len(freePopupNatives); n > 0 {
+		native := freePopupNatives[n-1]
+		freePopupNatives = freePopupNatives[:n-1]
+		return native
+	}
+
+	var native popupNative
+	withAutoreleasePool(func() {
+		frame := nsRect{nsPoint{0, 0}, nsSize{1, 1}}
+		win := objc.ID(clsNSWindow).Send(selAlloc)
+		win = win.Send(selInitWithContentRectStyleMaskBackingDefer, frame, nsWindowStyleMaskBorderless, nsBackingStoreBuffered, false)
+		win.Send(selSetReleasedWhenClosed, false)
+		win.Send(selSetLevel, nsPopUpMenuWindowLevel)
+		win.Send(selSetHasShadow, true)
+
+		view := objc.ID(nuiPopupViewClass).Send(selAlloc).Send(selInitWithFrame, frame)
+		win.Send(selSetContentView, view)
+		view.Send(selRelease) // the window keeps it
+
+		native = popupNative{win: win, view: view}
+	})
+	return native
 }
 
 func registerPopupViewClass() {
@@ -286,7 +314,8 @@ func (p *popupWindow) close() {
 	}
 	p.closed = true
 	delete(popups, p.view)
-	// Not released, same as regular windows (see nuiWindowWillClose): one
-	// small leak per form is better than a crash inside AppKit
-	p.win.Send(selClose)
+	// Hidden and kept for the next popup instead of released: releasing
+	// closed windows crashed inside AppKit (see nuiWindowWillClose)
+	p.win.Send(selOrderOut, objc.ID(0))
+	freePopupNatives = append(freePopupNatives, popupNative{win: p.win, view: p.view})
 }
